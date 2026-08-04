@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:hive/hive.dart';
 
 import '../models/vitals_entry.dart';
+import '../utils/units.dart';
 
 final _dateKeyRegex = RegExp(r'^\d{4}-\d{2}-\d{2}$');
 
@@ -20,6 +21,10 @@ class VitalsRepository {
   final Box vitalsBox;
   final Box historyBox;
   final Box presetsBox;
+
+  WeightUnit get weightUnit => weightUnitFromStored(vitalsBox.get('user_weight_unit', defaultValue: 'kg'));
+
+  void setWeightUnit(WeightUnit unit) => vitalsBox.put('user_weight_unit', unit.label);
 
   void seedDefaultPresetsIfEmpty() {
     if (presetsBox.isEmpty) {
@@ -138,6 +143,14 @@ class VitalsRepository {
       if (cols.length > 6 && cols[6].isNotEmpty) {
         final v = int.tryParse(cols[6]);
         if (v != null) updates['steps'] = v;
+      }
+      if (cols.length > 7 && cols[7].isNotEmpty) {
+        final v = int.tryParse(cols[7]);
+        if (v != null) updates['systolic'] = v;
+      }
+      if (cols.length > 8 && cols[8].isNotEmpty) {
+        final v = int.tryParse(cols[8]);
+        if (v != null) updates['diastolic'] = v;
       }
 
       if (updates.isEmpty) {

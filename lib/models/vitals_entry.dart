@@ -8,8 +8,10 @@ class VitalsEntry {
   final int? protein;
   final double? fasting;
   final int? steps;
+  final int? systolic;
+  final int? diastolic;
 
-  const VitalsEntry({this.weight, this.waist, this.calories, this.protein, this.fasting, this.steps});
+  const VitalsEntry({this.weight, this.waist, this.calories, this.protein, this.fasting, this.steps, this.systolic, this.diastolic});
 
   factory VitalsEntry.fromMap(Map raw) {
     double? asDouble(dynamic v) => v == null ? null : (double.tryParse(v.toString()) ?? (v is num ? v.toDouble() : null));
@@ -22,6 +24,8 @@ class VitalsEntry {
       protein: asInt(raw['protein'] ?? raw['pro'] ?? raw['p'] ?? raw['P']),
       fasting: asDouble(raw['fasting'] ?? raw['fast']),
       steps: asInt(raw['steps']),
+      systolic: asInt(raw['systolic'] ?? raw['sys']),
+      diastolic: asInt(raw['diastolic'] ?? raw['dia']),
     );
   }
 }

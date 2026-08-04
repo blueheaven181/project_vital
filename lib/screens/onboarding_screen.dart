@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../services/vitals_repository.dart';
 import '../theme/vital_palette.dart';
+import '../utils/units.dart';
 import '../widgets/glass.dart';
 import 'dashboard_screen.dart';
 
@@ -23,6 +24,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   bool isHeightInFeet = true;
   String gender = 'Male';
+  WeightUnit weightUnit = WeightUnit.kg;
+
+  void _convertWeightFields(WeightUnit newUnit) {
+    if (newUnit == weightUnit) return;
+    final w = double.tryParse(weightController.text);
+    final g = double.tryParse(goalWeightController.text);
+    if (w != null) weightController.text = kgToDisplay(displayToKg(w, weightUnit), newUnit).toStringAsFixed(1);
+    if (g != null) goalWeightController.text = kgToDisplay(displayToKg(g, weightUnit), newUnit).toStringAsFixed(1);
+    weightUnit = newUnit;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -169,11 +180,48 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 Row(
                   children: [
                     Expanded(
+                      child: InkWell(
+                        onTap: () => setState(() => _convertWeightFields(WeightUnit.kg)),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: weightUnit == WeightUnit.kg ? VitalPalette.amber.withValues(alpha: 0.15) : Colors.black,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: weightUnit == WeightUnit.kg ? VitalPalette.amber : Colors.white24),
+                          ),
+                          child: Text('KG', style: TextStyle(color: weightUnit == WeightUnit.kg ? VitalPalette.amber : Colors.white54, fontWeight: FontWeight.w900, fontSize: 12)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => setState(() => _convertWeightFields(WeightUnit.lbs)),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: weightUnit == WeightUnit.lbs ? VitalPalette.amber.withValues(alpha: 0.15) : Colors.black,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: weightUnit == WeightUnit.lbs ? VitalPalette.amber : Colors.white24),
+                          ),
+                          child: Text('LBS', style: TextStyle(color: weightUnit == WeightUnit.lbs ? VitalPalette.amber : Colors.white54, fontWeight: FontWeight.w900, fontSize: 12)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                Row(
+                  children: [
+                    Expanded(
                       child: TextField(
                         controller: weightController,
                         keyboardType: TextInputType.number,
                         style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(labelText: 'Current Weight (kg)', labelStyle: const TextStyle(color: VitalPalette.amber), filled: true, fillColor: Colors.black, border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)),
+                        decoration: InputDecoration(labelText: 'Current Weight (${weightUnit.label})', labelStyle: const TextStyle(color: VitalPalette.amber), filled: true, fillColor: Colors.black, border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -186,7 +234,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               keyboardType: TextInputType.number,
                               style: const TextStyle(color: Colors.white),
                               decoration: InputDecoration(
-                                labelText: 'Goal Weight (kg)',
+                                labelText: 'Goal Weight (${weightUnit.label})',
                                 labelStyle: const TextStyle(color: VitalPalette.rose),
                                 filled: true,
                                 fillColor: Colors.black,
@@ -205,11 +253,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             onPressed: () {
                               double heightCm = double.tryParse(heightController.text) ?? 165.0;
                               if (isHeightInFeet) heightCm = heightCm * 30.48;
-                              final suggestedWeight = 22 * ((heightCm / 100.0) * (heightCm / 100.0));
-                              goalWeightController.text = suggestedWeight.toStringAsFixed(1);
+                              final suggestedWeightKg = 22 * ((heightCm / 100.0) * (heightCm / 100.0));
+                              final suggestedDisplay = kgToDisplay(suggestedWeightKg, weightUnit);
+                              goalWeightController.text = suggestedDisplay.toStringAsFixed(1);
 
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Auto-suggested ideal weight set to ${suggestedWeight.toStringAsFixed(1)} kg!')),
+                                SnackBar(content: Text('Auto-suggested ideal weight set to ${suggestedDisplay.toStringAsFixed(1)} ${weightUnit.label}!')),
                               );
                             },
                             child: const Text('AUTO', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11)),
@@ -231,9 +280,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       repo.vitalsBox.put('user_age', int.tryParse(ageController.text) ?? 30);
                       repo.vitalsBox.put('user_height', heightController.text.trim());
                       repo.vitalsBox.put('user_gender', gender);
+                      repo.setWeightUnit(weightUnit);
 
-                      final currentW = double.tryParse(weightController.text) ?? 72.0;
-                      final goalW = double.tryParse(goalWeightController.text) ?? 63.0;
+                      final currentW = displayToKg(double.tryParse(weightController.text) ?? kgToDisplay(72.0, weightUnit), weightUnit);
+                      final goalW = displayToKg(double.tryParse(goalWeightController.text) ?? kgToDisplay(63.0, weightUnit), weightUnit);
 
                       repo.vitalsBox.put('user_goal_weight', goalW);
                       repo.vitalsBox.put('profile_setup_complete', true);

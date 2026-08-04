@@ -8,6 +8,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../models/vitals_entry.dart';
 import '../services/vitals_repository.dart';
 import '../theme/vital_palette.dart';
+import '../utils/units.dart';
 import '../widgets/glass.dart';
 import '../widgets/goal_ring.dart';
 import 'onboarding_screen.dart';
@@ -131,6 +132,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               menuTile(Icons.cloud_upload_outlined, VitalPalette.sky, 'Backup & Restore', 'Export or restore a full JSON backup', () => _showBackupCloudDialog(context)),
               menuTile(Icons.file_upload_outlined, VitalPalette.sage, 'Import CSV', 'Bulk-import multiple days at once', () => _showImportCsvDialog(context)),
               menuTile(Icons.help_outline, VitalPalette.teal, 'Help', 'How to use Project Vital', () => _showHelpDialog(context)),
+              menuTile(Icons.swap_horiz, VitalPalette.rose, 'Weight Unit', 'Currently ${repo.weightUnit.label.toUpperCase()} — tap to switch', () => _showUnitsDialog(context)),
               const SizedBox(height: 8),
             ],
           ),
@@ -140,8 +142,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _showProfileSettingsDialog(BuildContext context) {
+    final unit = repo.weightUnit;
+    final goalKg = (repo.vitalsBox.get('user_goal_weight', defaultValue: 63.0) as num).toDouble();
     final TextEditingController nameController = TextEditingController(text: repo.vitalsBox.get('user_name', defaultValue: 'Athlete'));
-    final TextEditingController goalController = TextEditingController(text: repo.vitalsBox.get('user_goal_weight', defaultValue: 63.0).toString());
+    final TextEditingController goalController = TextEditingController(text: kgToDisplay(goalKg, unit).toStringAsFixed(1));
     final TextEditingController heightController = TextEditingController(text: repo.vitalsBox.get('user_height', defaultValue: '5.45'));
     String gender = repo.vitalsBox.get('user_gender', defaultValue: 'Male');
 
@@ -210,7 +214,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       controller: goalController,
                       keyboardType: TextInputType.number,
                       style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(labelText: 'Target Goal Weight (kg)', labelStyle: const TextStyle(color: VitalPalette.rose), filled: true, fillColor: Colors.black, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+                      decoration: InputDecoration(labelText: 'Target Goal Weight (${unit.label})', labelStyle: const TextStyle(color: VitalPalette.rose), filled: true, fillColor: Colors.black, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
                     ),
                     const SizedBox(height: 24),
                     SizedBox(
@@ -248,7 +252,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     repo.vitalsBox.put('user_name', nameController.text.trim());
                     repo.vitalsBox.put('user_height', heightController.text.trim());
                     repo.vitalsBox.put('user_gender', gender);
-                    repo.vitalsBox.put('user_goal_weight', double.tryParse(goalController.text) ?? 63.0);
+                    final goalInput = double.tryParse(goalController.text);
+                    repo.vitalsBox.put('user_goal_weight', goalInput != null ? displayToKg(goalInput, unit) : goalKg);
                     if (context.mounted) Navigator.pop(context);
                   },
                   child: const Text('SAVE', style: TextStyle(fontWeight: FontWeight.w900)),
@@ -527,9 +532,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('One row per day. Columns: date,weight,waist,calories,protein,fasting,steps', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                const Text('One row per day. Columns: date,weight,waist,calories,protein,fasting,steps,systolic,diastolic', style: TextStyle(color: Colors.white70, fontSize: 11)),
                 const SizedBox(height: 4),
-                const Text('e.g. 2026-08-01,76.4,88,1840,128,14.5,8200', style: TextStyle(color: Colors.white38, fontSize: 10, fontStyle: FontStyle.italic)),
+                const Text('e.g. 2026-08-01,76.4,88,1840,128,14.5,8200,118,76', style: TextStyle(color: Colors.white38, fontSize: 10, fontStyle: FontStyle.italic)),
                 const SizedBox(height: 12),
                 TextField(
                   controller: csvController,
@@ -663,6 +668,58 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  void _showUnitsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final current = repo.weightUnit;
+            Widget unitChip(WeightUnit unit, String label) {
+              final selected = current == unit;
+              return Expanded(
+                child: InkWell(
+                  onTap: () => setDialogState(() => repo.setWeightUnit(unit)),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: selected ? VitalPalette.amber.withValues(alpha: 0.15) : Colors.black,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: selected ? VitalPalette.amber : Colors.white24),
+                    ),
+                    child: Text(label, style: TextStyle(color: selected ? VitalPalette.amber : Colors.white54, fontWeight: FontWeight.w900, fontSize: 13)),
+                  ),
+                ),
+              );
+            }
+
+            return AlertDialog(
+              backgroundColor: VitalPalette.ink800,
+              title: const Text('WEIGHT UNIT', style: TextStyle(color: VitalPalette.amber, fontSize: 14, fontWeight: FontWeight.w900)),
+              content: SizedBox(
+                width: 360,
+                child: Row(
+                  children: [
+                    unitChip(WeightUnit.kg, 'KILOGRAMS (KG)'),
+                    const SizedBox(width: 12),
+                    unitChip(WeightUnit.lbs, 'POUNDS (LBS)'),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('DONE', style: TextStyle(color: Colors.white54)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   // Average adult stride length (~0.762m) used to estimate distance walked.
   String _stepsSubtitle(int? steps) {
     if (steps == null) return "GOAL: 20k";
@@ -780,12 +837,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _showQuickLogForm(BuildContext context, VitalsEntry? todayEntry) {
     DateTime selectedDate = DateTime.now();
-    final TextEditingController weightController = TextEditingController(text: todayEntry?.weight?.toString() ?? '');
+    final unit = repo.weightUnit;
+    final displayWeight = todayEntry?.weight != null ? kgToDisplay(todayEntry!.weight!, unit) : null;
+    final TextEditingController weightController = TextEditingController(text: displayWeight?.toStringAsFixed(1) ?? '');
     final TextEditingController waistController = TextEditingController(text: todayEntry?.waist?.toString() ?? '');
     final TextEditingController caloriesController = TextEditingController(text: todayEntry?.calories?.toString() ?? '');
     final TextEditingController proteinController = TextEditingController(text: todayEntry?.protein?.toString() ?? '');
     final TextEditingController fastingController = TextEditingController(text: todayEntry?.fasting?.toString() ?? '');
     final TextEditingController stepsController = TextEditingController(text: todayEntry?.steps?.toString() ?? '');
+    final TextEditingController systolicController = TextEditingController(text: todayEntry?.systolic?.toString() ?? '');
+    final TextEditingController diastolicController = TextEditingController(text: todayEntry?.diastolic?.toString() ?? '');
 
     showModalBottomSheet(
       context: context,
@@ -835,7 +896,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    TextField(controller: weightController, keyboardType: TextInputType.number, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold), decoration: InputDecoration(labelText: 'Weight (kg)', labelStyle: const TextStyle(color: VitalPalette.amber), filled: true, fillColor: Colors.black, border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none))),
+                    TextField(controller: weightController, keyboardType: TextInputType.number, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold), decoration: InputDecoration(labelText: 'Weight (${unit.label})', labelStyle: const TextStyle(color: VitalPalette.amber), filled: true, fillColor: Colors.black, border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none))),
                     const SizedBox(height: 12),
                     TextField(controller: waistController, keyboardType: TextInputType.number, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold), decoration: InputDecoration(labelText: 'Waistline (cm)', labelStyle: const TextStyle(color: VitalPalette.rose), filled: true, fillColor: Colors.black, border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none))),
                     const SizedBox(height: 12),
@@ -846,6 +907,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     TextField(controller: fastingController, keyboardType: TextInputType.number, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold), decoration: InputDecoration(labelText: 'Fasting Hours (e.g. 16)', labelStyle: const TextStyle(color: VitalPalette.flame), filled: true, fillColor: Colors.black, border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none))),
                     const SizedBox(height: 12),
                     TextField(controller: stepsController, keyboardType: TextInputType.number, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold), decoration: InputDecoration(labelText: 'Steps', labelStyle: const TextStyle(color: VitalPalette.sky), filled: true, fillColor: Colors.black, border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none))),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(controller: systolicController, keyboardType: TextInputType.number, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold), decoration: InputDecoration(labelText: 'Systolic (mmHg)', labelStyle: const TextStyle(color: VitalPalette.violet), filled: true, fillColor: Colors.black, border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none))),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(controller: diastolicController, keyboardType: TextInputType.number, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold), decoration: InputDecoration(labelText: 'Diastolic (mmHg)', labelStyle: const TextStyle(color: VitalPalette.violet), filled: true, fillColor: Colors.black, border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none))),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 30),
                     SizedBox(
                       width: double.infinity,
@@ -853,18 +926,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(vertical: 20), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24))),
                         onPressed: () async {
                           final dateKey = selectedDate.toIso8601String().split('T')[0];
-                          final w = double.tryParse(weightController.text);
+                          final wRaw = double.tryParse(weightController.text);
+                          final w = wRaw != null ? displayToKg(wRaw, unit) : null;
                           final waist = double.tryParse(waistController.text);
                           final cals = int.tryParse(caloriesController.text);
                           final prot = int.tryParse(proteinController.text);
                           final fast = double.tryParse(fastingController.text);
                           final stps = int.tryParse(stepsController.text);
+                          final sys = int.tryParse(systolicController.text);
+                          final dia = int.tryParse(diastolicController.text);
 
                           repo.upsertHistoryEntry(dateKey, {
                             if (w != null) 'weight': w,
                             if (waist != null) 'waist': waist,
                             if (cals != null) 'calories': cals,
                             if (prot != null) 'protein': prot,
+                            if (sys != null) 'systolic': sys,
+                            if (dia != null) 'diastolic': dia,
                             if (fast != null) 'fasting': fast,
                             if (stps != null) 'steps': stps,
                           });
@@ -897,26 +975,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
           valueListenable: repo.historyBox.listenable(),
           builder: (context, historyBox, __) {
             final userName = vitalsBox.get('user_name', defaultValue: 'Athlete') as String?;
-            final goalWeight = (vitalsBox.get('user_goal_weight', defaultValue: 63.0) as num).toDouble();
+            final unit = repo.weightUnit;
+            final goalWeightKg = (vitalsBox.get('user_goal_weight', defaultValue: 63.0) as num).toDouble();
+            final goalWeightDisplay = kgToDisplay(goalWeightKg, unit);
             final latest = repo.latestEntry;
             final todayKey = DateTime.now().toIso8601String().split('T')[0];
             final todayEntry = repo.entryForDate(todayKey);
+            final displayWeight = latest?.weight != null ? kgToDisplay(latest!.weight!, unit) : null;
 
-            String currentWeight = latest?.weight != null ? "${latest?.weight} kg" : "-- kg";
+            String currentWeight = displayWeight != null ? "${displayWeight.toStringAsFixed(1)} ${unit.label}" : "-- ${unit.label}";
             String currentWaist = latest?.waist != null ? "${latest?.waist} cm" : "-- cm";
             String currentCalories = latest?.calories != null ? "${latest?.calories}" : "--";
             String currentProtein = latest?.protein != null ? "${latest?.protein} g" : "-- g";
             String currentFasting = latest?.fasting != null ? "${latest?.fasting}h" : "--";
             String currentSteps = latest?.steps != null ? "${latest?.steps}" : "--";
+            String currentBP = (latest?.systolic != null && latest?.diastolic != null) ? "${latest?.systolic}/${latest?.diastolic}" : "--/--";
 
-            final weightSpots = repo.chronologicalWeightSpots(fallback: latest?.weight ?? 0.0);
+            final heightCm = parseHeightCm(vitalsBox.get('user_height', defaultValue: '5.45'));
+            final bmi = latest?.weight != null ? classifyBmi(latest!.weight!, heightCm) : null;
+            const bmiColors = {
+              'Underweight': VitalPalette.sky,
+              'Normal': VitalPalette.sage,
+              'Overweight': VitalPalette.amber,
+              'Obese': VitalPalette.flame,
+            };
+
+            final weightSpots = repo.chronologicalWeightSpots(fallback: latest?.weight ?? 0.0).map((s) => FlSpot(s.x, kgToDisplay(s.y, unit))).toList();
             final waistSpots = repo.metricSpots('waist');
             final calorieSpots = repo.metricSpots('calories');
             final proteinSpots = repo.metricSpots('protein');
             final fastingSpots = repo.metricSpots('fasting');
             final stepSpots = repo.metricSpots('steps');
+            final bpSpots = repo.metricSpots('systolic');
 
-            double diff = (latest?.weight ?? 72.0) - goalWeight;
+            double diff = (displayWeight ?? kgToDisplay(72.0, unit)) - goalWeightDisplay;
 
             return Scaffold(
               appBar: AppBar(
@@ -967,21 +1059,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           borderRadius: BorderRadius.circular(22),
                           child: Row(
                             children: [
-                              GoalRing(progress: _goalProgressFraction(latest, goalWeight), size: 58),
+                              GoalRing(progress: _goalProgressFraction(latest, goalWeightKg), size: 58),
                               const SizedBox(width: 16),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('GOAL · $goalWeight KG', style: const TextStyle(color: VitalPalette.textMuted, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+                                    Text('GOAL · ${goalWeightDisplay.toStringAsFixed(1)} ${unit.label.toUpperCase()}', style: const TextStyle(color: VitalPalette.textMuted, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
                                     const SizedBox(height: 5),
                                     Text(
-                                      diff > 0 ? '${diff.toStringAsFixed(1)} kg remaining' : 'Target reached!',
+                                      diff > 0 ? '${diff.toStringAsFixed(1)} ${unit.label} remaining' : 'Target reached!',
                                       style: const TextStyle(fontFamily: VitalPalette.numeralFont, color: VitalPalette.textPrimary, fontSize: 17, fontWeight: FontWeight.w600),
                                     ),
                                   ],
                                 ),
                               ),
+                              if (bmi != null)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: (bmiColors[bmi.label] ?? VitalPalette.textMuted).withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(bmi.bmi.toStringAsFixed(1), style: TextStyle(fontFamily: VitalPalette.numeralFont, color: bmiColors[bmi.label] ?? VitalPalette.textMuted, fontSize: 15, fontWeight: FontWeight.w700)),
+                                      Text(bmi.label.toUpperCase(), style: TextStyle(color: bmiColors[bmi.label] ?? VitalPalette.textMuted, fontSize: 8.5, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+                                    ],
+                                  ),
+                                ),
                             ],
                           ),
                         ),
@@ -993,12 +1100,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             mainAxisSpacing: 12,
                             childAspectRatio: 0.95,
                             children: [
-                              _buildGridCard("WEIGHT", currentWeight, "GOAL: $goalWeight", Icons.monitor_weight, VitalPalette.amber, weightSpots),
+                              _buildGridCard("WEIGHT", currentWeight, "GOAL: ${goalWeightDisplay.toStringAsFixed(1)}", Icons.monitor_weight, VitalPalette.amber, weightSpots),
                               _buildGridCard("WAISTLINE", currentWaist, "TREND: -0.5cm", Icons.straighten, VitalPalette.rose, waistSpots),
                               _buildGridCard("CALORIES", currentCalories, "BUDGET: 2000", Icons.local_fire_department, VitalPalette.flame, calorieSpots),
                               _buildGridCard("PROTEIN", currentProtein, "TARGET: 150g", Icons.fitness_center, VitalPalette.violet, proteinSpots),
                               _buildGridCard("FASTING", currentFasting, "16:8 PROTOCOL", Icons.timer, VitalPalette.teal, fastingSpots),
                               _buildGridCard("STEPS", currentSteps, _stepsSubtitle(latest?.steps), Icons.directions_run, VitalPalette.sky, stepSpots),
+                              _buildGridCard("BLOOD PRESSURE", currentBP, "TARGET: <120/80", Icons.favorite_border, VitalPalette.violet, bpSpots),
                             ],
                           ),
                         ),
