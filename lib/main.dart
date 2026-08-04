@@ -281,12 +281,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
 
 
-  @override
+@override
   void initState() {
     super.initState();
     vitalsBox = Hive.box('vitals_box');
     historyBox = Hive.box('history_box');
     presetsBox = Hive.box('presets_box');
+    
+
+    historyBox.clear();
     
     if (presetsBox.isEmpty) {
       presetsBox.put('Morning Oats', {'cals': 420, 'protein': 35});
@@ -374,68 +377,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
 List<FlSpot> getChronologicalWeightSpots() {
   try {
     final keys = historyBox.keys.toList();
-    
-    // Filter keys that match the YYYY-MM-DD date format
-    final dateKeys = keys.where((k) {
-      if (k is! String) return false;
-      return RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(k);
-    }).toList();
+    final dateKeys = keys.where((k) => k is String && RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(k)).toList();
 
-    // Sort dates strictly chronological (Oldest to Newest)
-    dateKeys.sort((a, b) => a.compareTo(b));
+    // Sort strictly oldest to newest using DateTime parsing
+    dateKeys.sort((a, b) => DateTime.parse(a).compareTo(DateTime.parse(b)));
 
     List<FlSpot> spots = [];
     for (int i = 0; i < dateKeys.length; i++) {
       final entry = historyBox.get(dateKeys[i]);
-      if (entry != null && entry is Map) {
-        // Extract weight dynamically from the map
-        final dynamic rawWeight = entry['weight'] ?? entry['Weight'];
-        final double? weightVal = double.tryParse(rawWeight?.toString() ?? '');
-        
-        if (weightVal != null && weightVal > 0) {
-          spots.add(FlSpot(i.toDouble(), weightVal));
+      if (entry is Map) {
+        final val = double.tryParse(entry['weight']?.toString() ?? '');
+        if (val != null) {
+          spots.add(FlSpot(i.toDouble(), val));
         }
       }
     }
 
-    if (spots.isNotEmpty) {
-      return spots;
+    if (spots.length == 1) {
+      final singleVal = spots[0].y;
+      return [FlSpot(0, singleVal), FlSpot(1, singleVal)];
     }
-  } catch (_) {}
 
-  // Fallback default spots if empty
-  return [const FlSpot(0, 72.0), const FlSpot(1, 72.5)];
+    if (spots.isNotEmpty) return spots;
+  } catch (_) {}
+  
+  double currentW = savedWeight ?? 0.0;
+  return [FlSpot(0, currentW), FlSpot(1, currentW)];
 }
 
 
 
 void _loadData() {
-  final todayKey = DateTime.now().toIso8601String().split('T')[0]; // Format: YYYY-MM-DD
-  final todayLog = historyBox.get(todayKey);
-
   setState(() {
     userName = vitalsBox.get('user_name', defaultValue: 'Athlete');
     goalWeight = vitalsBox.get('user_goal_weight', defaultValue: 63.0);
+
+    final keys = historyBox.keys.where((k) => k is String && RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(k)).toList();
     
-    // Load latest values from vitalsBox into your state variables
+    if (keys.isNotEmpty) {
+      // Sort ascending: Oldest first, newest last
+      keys.sort((a, b) => DateTime.parse(a).compareTo(DateTime.parse(b)));
+      
+      // keys.last is now guaranteed to be the latest calendar date (e.g., Aug 4)
+      final latestKey = keys.last; 
+      final latestLog = historyBox.get(latestKey);
+
+      if (latestLog != null && latestLog is Map) {
+        savedWeight = double.tryParse(latestLog['weight']?.toString() ?? '') ?? vitalsBox.get('latest_weight');
+        savedWaistline = double.tryParse(latestLog['waist']?.toString() ?? '') ?? vitalsBox.get('latest_waistline');
+        savedCalories = int.tryParse(latestLog['calories']?.toString() ?? '') ?? vitalsBox.get('latest_calories');
+        savedProtein = int.tryParse(latestLog['protein']?.toString() ?? '') ?? vitalsBox.get('latest_protein');
+        savedFasting = double.tryParse(latestLog['fasting']?.toString() ?? '') ?? vitalsBox.get('latest_fasting');
+        savedSteps = int.tryParse(latestLog['steps']?.toString() ?? '') ?? vitalsBox.get('latest_steps');
+        return;
+      }
+    }
+
     savedWeight = vitalsBox.get('latest_weight');
     savedWaistline = vitalsBox.get('latest_waistline');
     savedCalories = vitalsBox.get('latest_calories');
     savedProtein = vitalsBox.get('latest_protein');
     savedFasting = vitalsBox.get('latest_fasting');
     savedSteps = vitalsBox.get('latest_steps');
-
-    if (todayLog != null && todayLog is Map) {
-      if (todayLog['weight'] != null) savedWeight = double.tryParse(todayLog['weight'].toString());
-      if (todayLog['waist'] != null) savedWaistline = double.tryParse(todayLog['waist'].toString());
-      if (todayLog['calories'] != null) savedCalories = int.tryParse(todayLog['calories'].toString());
-      if (todayLog['protein'] != null) savedProtein = int.tryParse(todayLog['protein'].toString());
-      if (todayLog['fasting'] != null) savedFasting = double.tryParse(todayLog['fasting'].toString());
-      if (todayLog['steps'] != null) savedSteps = int.tryParse(todayLog['steps'].toString());
-    }
   });
 }
-
 
 void _showLogDialog(BuildContext context) {
   final TextEditingController weightController = TextEditingController();
@@ -1013,6 +1018,29 @@ void _saveDailyMetrics(double weight, double waist, int calories, int protein, d
     );
   }
 
+
+
+
+  List<FlSpot> _getMetricSpots(String key) {
+    try {
+      final keys = historyBox.keys.where((k) => k is String && RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(k)).toList();
+      keys.sort((a, b) => a.compareTo(b));
+      List<FlSpot> spots = [];
+      for (int i = 0; i < keys.length; i++) {
+        final entry = historyBox.get(keys[i]);
+        if (entry is Map && entry[key] != null) {
+        final val = double.tryParse(entry[key].toString());
+        if (val != null) spots.add(FlSpot(i.toDouble(), val));
+        }
+      }
+      if (spots.isNotEmpty) return spots;
+    } catch (_) {}
+    return [const FlSpot(0, 0), const FlSpot(1, 0)];
+  }
+
+
+
+
   @override
   Widget build(BuildContext context) {
     String currentWeight = savedWeight != null ? "$savedWeight kg" : "-- kg";
@@ -1022,12 +1050,14 @@ void _saveDailyMetrics(double weight, double waist, int calories, int protein, d
     String currentFasting = savedFasting != null ? "${savedFasting}h" : "--";
     String currentSteps = savedSteps != null ? "$savedSteps" : "--";
 
-    final weightSpots = [const FlSpot(0, 74), const FlSpot(1, 73.5), const FlSpot(2, 72.9), FlSpot(3, savedWeight ?? 72.5)];
-    final waistSpots = [const FlSpot(0, 90), const FlSpot(1, 89), const FlSpot(2, 88.5)];
-    final calorieSpots = [const FlSpot(0, 1950), const FlSpot(1, 1800), const FlSpot(2, 1900)];
-    final proteinSpots = [const FlSpot(0, 120), const FlSpot(1, 130), const FlSpot(2, 140)];
-    final fastingSpots = [const FlSpot(0, 16), const FlSpot(1, 16), const FlSpot(2, 16)];
-    final stepSpots = [const FlSpot(0, 18000), const FlSpot(1, 19500), const FlSpot(2, 21000)];
+  
+  // Dynamic sparklines from actual history entries
+    final weightSpots = getChronologicalWeightSpots();
+    final waistSpots = _getMetricSpots('waist');
+    final calorieSpots = _getMetricSpots('calories');
+    final proteinSpots = _getMetricSpots('protein');
+    final fastingSpots = _getMetricSpots('fasting');
+    final stepSpots = _getMetricSpots('steps');
 
     double diff = (savedWeight ?? 72.0) - (goalWeight ?? 63.0);
 
