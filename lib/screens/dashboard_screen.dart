@@ -130,6 +130,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               menuTile(Icons.breakfast_dining, VitalPalette.violet, 'Meal Macro Presets', 'Stack saved meals into today', () => _showPresetLibraryDialog(context)),
               menuTile(Icons.cloud_upload_outlined, VitalPalette.sky, 'Backup & Restore', 'Export or restore a full JSON backup', () => _showBackupCloudDialog(context)),
               menuTile(Icons.file_upload_outlined, VitalPalette.sage, 'Import CSV', 'Bulk-import multiple days at once', () => _showImportCsvDialog(context)),
+              menuTile(Icons.help_outline, VitalPalette.teal, 'Help', 'How to use Project Vital', () => _showHelpDialog(context)),
               const SizedBox(height: 8),
             ],
           ),
@@ -142,6 +143,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final TextEditingController nameController = TextEditingController(text: repo.vitalsBox.get('user_name', defaultValue: 'Athlete'));
     final TextEditingController goalController = TextEditingController(text: repo.vitalsBox.get('user_goal_weight', defaultValue: 63.0).toString());
     final TextEditingController heightController = TextEditingController(text: repo.vitalsBox.get('user_height', defaultValue: '5.45'));
+    String gender = repo.vitalsBox.get('user_gender', defaultValue: 'Male');
 
     showDialog(
       context: context,
@@ -160,6 +162,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       controller: nameController,
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(labelText: 'Profile Name', labelStyle: const TextStyle(color: Colors.white54), filled: true, fillColor: Colors.black, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => setDialogState(() => gender = 'Male'),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: gender == 'Male' ? VitalPalette.amber.withValues(alpha: 0.15) : Colors.black,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: gender == 'Male' ? VitalPalette.amber : Colors.white24),
+                              ),
+                              child: Text('MALE', style: TextStyle(color: gender == 'Male' ? VitalPalette.amber : Colors.white54, fontWeight: FontWeight.w900, fontSize: 12)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => setDialogState(() => gender = 'Female'),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: gender == 'Female' ? VitalPalette.rose.withValues(alpha: 0.15) : Colors.black,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: gender == 'Female' ? VitalPalette.rose : Colors.white24),
+                              ),
+                              child: Text('FEMALE', style: TextStyle(color: gender == 'Female' ? VitalPalette.rose : Colors.white54, fontWeight: FontWeight.w900, fontSize: 12)),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
                     TextField(
@@ -209,6 +247,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   onPressed: () {
                     repo.vitalsBox.put('user_name', nameController.text.trim());
                     repo.vitalsBox.put('user_height', heightController.text.trim());
+                    repo.vitalsBox.put('user_gender', gender);
                     repo.vitalsBox.put('user_goal_weight', double.tryParse(goalController.text) ?? 63.0);
                     if (context.mounted) Navigator.pop(context);
                   },
@@ -565,6 +604,79 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  void _showHelpDialog(BuildContext context) {
+    Widget helpItem(IconData icon, Color color, String title, String body) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: color, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 12)),
+                  const SizedBox(height: 2),
+                  Text(body, style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.4)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: VitalPalette.ink800,
+          title: const Text('HOW TO USE PROJECT VITAL', style: TextStyle(color: VitalPalette.amber, fontSize: 14, fontWeight: FontWeight.w900)),
+          content: SizedBox(
+            width: 450,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  helpItem(Icons.add_circle_outline, VitalPalette.amber, "Record today's vitals", 'Tap the + button to log weight, waistline, calories, protein, fasting hours, and steps for today.'),
+                  helpItem(Icons.history, VitalPalette.flame, 'Timeline History', "See every day you've logged, in chronological order, from the More menu."),
+                  helpItem(Icons.insights, VitalPalette.amber, 'Progress Analysis', 'A quick summary of your logging activity and trends.'),
+                  helpItem(Icons.breakfast_dining, VitalPalette.violet, 'Meal Macro Presets', "Save meals you eat often, then stack their calories/protein into today's total with one tap."),
+                  helpItem(Icons.cloud_upload_outlined, VitalPalette.sky, 'Backup & Restore', 'Export all your data as JSON to the clipboard, or restore from a previous backup. Restoring replaces all current data.'),
+                  helpItem(Icons.file_upload_outlined, VitalPalette.sage, 'Import CSV', 'Paste multiple days of data at once, one row per day.'),
+                  helpItem(Icons.person_outline, VitalPalette.rose, 'Profile & Goals', 'Tap your avatar (top right) to update your name, height, gender, or goal weight.'),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('CLOSE', style: TextStyle(color: Colors.white54)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Average adult stride length (~0.762m) used to estimate distance walked.
+  String _stepsSubtitle(int? steps) {
+    if (steps == null) return "GOAL: 20k";
+    final km = steps * 0.000762;
+    return "≈ ${km.toStringAsFixed(2)} KM";
+  }
+
+  String _greetingLabel() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'GOOD MORNING';
+    if (hour < 17) return 'GOOD AFTERNOON';
+    return 'GOOD EVENING';
+  }
+
   double _goalProgressFraction(VitalsEntry? latest, double goalWeight) {
     final spots = repo.chronologicalWeightSpots(fallback: latest?.weight ?? 0.0);
     final current = latest?.weight ?? (spots.isNotEmpty ? spots.last.y : 0.0);
@@ -666,14 +778,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  void _showQuickLogForm(BuildContext context, VitalsEntry? latest) {
+  void _showQuickLogForm(BuildContext context, VitalsEntry? todayEntry) {
     DateTime selectedDate = DateTime.now();
-    final TextEditingController weightController = TextEditingController(text: latest?.weight?.toString() ?? '');
-    final TextEditingController waistController = TextEditingController(text: latest?.waist?.toString() ?? '');
-    final TextEditingController caloriesController = TextEditingController(text: latest?.calories?.toString() ?? '');
-    final TextEditingController proteinController = TextEditingController(text: latest?.protein?.toString() ?? '');
-    final TextEditingController fastingController = TextEditingController(text: latest?.fasting?.toString() ?? '');
-    final TextEditingController stepsController = TextEditingController(text: latest?.steps?.toString() ?? '');
+    final TextEditingController weightController = TextEditingController(text: todayEntry?.weight?.toString() ?? '');
+    final TextEditingController waistController = TextEditingController(text: todayEntry?.waist?.toString() ?? '');
+    final TextEditingController caloriesController = TextEditingController(text: todayEntry?.calories?.toString() ?? '');
+    final TextEditingController proteinController = TextEditingController(text: todayEntry?.protein?.toString() ?? '');
+    final TextEditingController fastingController = TextEditingController(text: todayEntry?.fasting?.toString() ?? '');
+    final TextEditingController stepsController = TextEditingController(text: todayEntry?.steps?.toString() ?? '');
 
     showModalBottomSheet(
       context: context,
@@ -787,6 +899,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             final userName = vitalsBox.get('user_name', defaultValue: 'Athlete') as String?;
             final goalWeight = (vitalsBox.get('user_goal_weight', defaultValue: 63.0) as num).toDouble();
             final latest = repo.latestEntry;
+            final todayKey = DateTime.now().toIso8601String().split('T')[0];
+            final todayEntry = repo.entryForDate(todayKey);
 
             String currentWeight = latest?.weight != null ? "${latest?.weight} kg" : "-- kg";
             String currentWaist = latest?.waist != null ? "${latest?.waist} cm" : "-- cm";
@@ -813,7 +927,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text('VITALS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: VitalPalette.amber, letterSpacing: 3.0)),
+                      Text(_greetingLabel(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: VitalPalette.amber, letterSpacing: 3.0)),
                       const SizedBox(height: 3),
                       Text(userName ?? 'Athlete', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w600, color: VitalPalette.textPrimary, letterSpacing: -0.2)),
                     ],
@@ -884,7 +998,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               _buildGridCard("CALORIES", currentCalories, "BUDGET: 2000", Icons.local_fire_department, VitalPalette.flame, calorieSpots),
                               _buildGridCard("PROTEIN", currentProtein, "TARGET: 150g", Icons.fitness_center, VitalPalette.violet, proteinSpots),
                               _buildGridCard("FASTING", currentFasting, "16:8 PROTOCOL", Icons.timer, VitalPalette.teal, fastingSpots),
-                              _buildGridCard("STEPS", currentSteps, "GOAL: 20k", Icons.directions_run, VitalPalette.sky, stepSpots),
+                              _buildGridCard("STEPS", currentSteps, _stepsSubtitle(latest?.steps), Icons.directions_run, VitalPalette.sky, stepSpots),
                             ],
                           ),
                         ),
@@ -900,7 +1014,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   boxShadow: [BoxShadow(color: VitalPalette.amber.withValues(alpha: 0.35), blurRadius: 20, spreadRadius: 1)],
                 ),
                 child: FloatingActionButton(
-                  onPressed: () => _showQuickLogForm(context, latest),
+                  onPressed: () => _showQuickLogForm(context, todayEntry),
                   backgroundColor: Colors.transparent,
                   elevation: 0,
                   shape: const CircleBorder(),

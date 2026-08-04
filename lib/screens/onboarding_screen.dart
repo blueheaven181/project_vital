@@ -22,6 +22,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController goalWeightController = TextEditingController(text: "63.0");
 
   bool isHeightInFeet = true;
+  String gender = 'Male';
 
   @override
   Widget build(BuildContext context) {
@@ -131,6 +132,43 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 Row(
                   children: [
                     Expanded(
+                      child: InkWell(
+                        onTap: () => setState(() => gender = 'Male'),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 18),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: gender == 'Male' ? VitalPalette.amber.withValues(alpha: 0.15) : Colors.black,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: gender == 'Male' ? VitalPalette.amber : Colors.white24),
+                          ),
+                          child: Text('MALE', style: TextStyle(color: gender == 'Male' ? VitalPalette.amber : Colors.white54, fontWeight: FontWeight.w900, fontSize: 12)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => setState(() => gender = 'Female'),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 18),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: gender == 'Female' ? VitalPalette.rose.withValues(alpha: 0.15) : Colors.black,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: gender == 'Female' ? VitalPalette.rose : Colors.white24),
+                          ),
+                          child: Text('FEMALE', style: TextStyle(color: gender == 'Female' ? VitalPalette.rose : Colors.white54, fontWeight: FontWeight.w900, fontSize: 12)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                Row(
+                  children: [
+                    Expanded(
                       child: TextField(
                         controller: weightController,
                         keyboardType: TextInputType.number,
@@ -192,6 +230,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       repo.vitalsBox.put('user_name', nameController.text.trim());
                       repo.vitalsBox.put('user_age', int.tryParse(ageController.text) ?? 30);
                       repo.vitalsBox.put('user_height', heightController.text.trim());
+                      repo.vitalsBox.put('user_gender', gender);
 
                       final currentW = double.tryParse(weightController.text) ?? 72.0;
                       final goalW = double.tryParse(goalWeightController.text) ?? 63.0;

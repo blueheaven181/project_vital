@@ -42,6 +42,12 @@ class VitalsRepository {
     return VitalsEntry.fromMap(raw);
   }
 
+  VitalsEntry? entryForDate(String dateKey) {
+    final raw = historyBox.get(dateKey);
+    if (raw is! Map) return null;
+    return VitalsEntry.fromMap(raw);
+  }
+
   // Single source of truth for writing a day's metrics: always a Map, merged
   // with whatever is already stored for that date so partial updates (e.g. a
   // preset macro stack) don't clobber the other fields.
