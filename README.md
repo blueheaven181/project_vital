@@ -1,17 +1,48 @@
-# project_vital
+# Project Vital
 
-A new Flutter project.
+A personal, offline-first health & vitals tracker built with Flutter. Log daily weight, waistline, calories, protein, fasting windows, and steps — see trends, sparklines, and progress toward your goal weight, all stored locally on-device.
 
-## Getting Started
+## Features
 
-This project is a starting point for a Flutter application.
+- Daily vitals logging via a quick-log sheet (weight, waistline, calories, protein, fasting hours, steps)
+- Dashboard with per-metric cards, sparkline trends, and a goal-progress ring
+- Meal macro presets — stack a saved meal's calories/protein into today's total in one tap
+- Full historical timeline view
+- CSV bulk import (paste rows of `date,weight,waist,calories,protein,fasting,steps`)
+- JSON backup export/restore
+- 100% offline — all data stored locally via Hive, no account, no network required
 
-A few resources to get you started if this is your first Flutter project:
+## Tech stack
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- Flutter (Dart)
+- [Hive](https://pub.dev/packages/hive) for local key-value storage
+- [fl_chart](https://pub.dev/packages/fl_chart) for sparkline charts
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Getting started
+
+```bash
+flutter pub get
+flutter run
+```
+
+To build a debug APK for sideloading onto an Android device:
+
+```bash
+flutter build apk --debug
+```
+
+The output lands at `build/app/outputs/flutter-apk/app-debug.apk`.
+
+## Running tests
+
+```bash
+flutter test test/
+```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for a note on a Hive/`flutter_test` interaction that shapes how these tests are structured.
+
+## Project docs
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — data model, design system, known constraints
+- [ROADMAP.md](ROADMAP.md) — planned work
+- [CHANGELOG.md](CHANGELOG.md) — release history
