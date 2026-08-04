@@ -1,11 +1,15 @@
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../models/vitals_entry.dart';
+import '../services/pdf_report.dart';
 import '../services/vitals_repository.dart';
 import '../theme/vital_palette.dart';
 import '../utils/units.dart';
@@ -30,64 +34,130 @@ class _DashboardScreenState extends State<DashboardScreen> {
     repo.seedDefaultPresetsIfEmpty();
   }
 
+  ({double changeKg, DateTime fromDate})? _weightChangeSince(int days) {
+    final keys = repo.sortedDateKeys;
+    if (keys.isEmpty) return null;
+    final latestDate = DateTime.parse(keys.last);
+    final latestEntry = repo.entryForDate(keys.last);
+    if (latestEntry?.weight == null) return null;
+    final cutoff = latestDate.subtract(Duration(days: days));
+    for (final k in keys) {
+      final d = DateTime.parse(k);
+      if (d.isBefore(cutoff)) continue;
+      final e = repo.entryForDate(k);
+      if (e?.weight != null) {
+        return (changeKg: latestEntry!.weight! - e!.weight!, fromDate: d);
+      }
+    }
+    return null;
+  }
+
+  int _loggingStreak() {
+    final keys = repo.sortedDateKeys;
+    if (keys.isEmpty) return 0;
+    int streak = 1;
+    DateTime cursor = DateTime.parse(keys.last);
+    for (int i = keys.length - 2; i >= 0; i--) {
+      final d = DateTime.parse(keys[i]);
+      if (cursor.difference(d).inDays == 1) {
+        streak++;
+        cursor = d;
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
+  ({double? highKg, double? lowKg}) _weightRange() {
+    double? high;
+    double? low;
+    for (final k in repo.sortedDateKeys) {
+      final w = repo.entryForDate(k)?.weight;
+      if (w != null) {
+        high = (high == null || w > high) ? w : high;
+        low = (low == null || w < low) ? w : low;
+      }
+    }
+    return (highKg: high, lowKg: low);
+  }
+
+  int _daysLoggedThisMonth() {
+    final now = DateTime.now();
+    return repo.sortedDateKeys.where((k) {
+      final d = DateTime.parse(k);
+      return d.year == now.year && d.month == now.month;
+    }).length;
+  }
+
   void _showAnalyticsDialog(BuildContext context) {
-    int totalLogs = repo.historyBox.length;
+    final unit = repo.weightUnit;
+    final totalLogs = repo.historyBox.length;
+    final streak = _loggingStreak();
+    final change7 = _weightChangeSince(7);
+    final change30 = _weightChangeSince(30);
+    final range = _weightRange();
+    final monthLogged = _daysLoggedThisMonth();
+    final monthTotal = DateTime.now().day;
+
+    String changeLabel(({double changeKg, DateTime fromDate})? change) {
+      if (change == null) return 'Not enough data';
+      final displayChange = kgToDisplay(change.changeKg, unit);
+      final arrow = displayChange < 0 ? '↓' : (displayChange > 0 ? '↑' : '→');
+      return '$arrow ${displayChange.abs().toStringAsFixed(1)} ${unit.label}';
+    }
+
+    Color changeColor(({double changeKg, DateTime fromDate})? change) {
+      if (change == null) return VitalPalette.textMuted;
+      if (change.changeKg < 0) return VitalPalette.sage;
+      if (change.changeKg > 0) return VitalPalette.flame;
+      return VitalPalette.textMuted;
+    }
+
+    Widget statTile(String label, String value, {Color? valueColor}) {
+      return Container(
+        width: 195,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(color: VitalPalette.textMuted, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+            const SizedBox(height: 6),
+            Text(value, style: TextStyle(fontFamily: VitalPalette.numeralFont, color: valueColor ?? VitalPalette.textPrimary, fontSize: 18, fontWeight: FontWeight.w700)),
+          ],
+        ),
+      );
+    }
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           backgroundColor: VitalPalette.ink800,
-          title: const Text('PROGRESS & AUTOMATED ANALYSIS', style: TextStyle(color: VitalPalette.amber, fontSize: 14, fontWeight: FontWeight.w900)),
+          title: const Text('PROGRESS ANALYSIS', style: TextStyle(color: VitalPalette.amber, fontSize: 14, fontWeight: FontWeight.w900)),
           content: SizedBox(
             width: 450,
             child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('WEEKLY & MONTHLY TREND ANALYSIS', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 12),
-
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: VitalPalette.amber.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: VitalPalette.amber.withValues(alpha: 0.3)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              child: totalLogs == 0
+                  ? const Text('No logs recorded yet. Start tracking your daily weight to see trends here.', style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4))
+                  : Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
                       children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.insights, color: VitalPalette.amber, size: 18),
-                            SizedBox(width: 8),
-                            Text('AI Vitals Assessment', style: TextStyle(color: VitalPalette.amber, fontWeight: FontWeight.w900, fontSize: 12)),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          totalLogs > 0
-                            ? 'You have logged $totalLogs entries total. Your chronological timeline is active, ensuring backdated records map seamlessly across your monthly progress graphs.'
-                            : 'No logs recorded yet. Start tracking your daily weight, waistline, and macros to activate automated trend analysis!',
-                          style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
-                        ),
+                        statTile('LOGGING STREAK', '$streak day${streak == 1 ? '' : 's'}'),
+                        statTile('TOTAL LOGS', '$totalLogs'),
+                        statTile('7-DAY CHANGE', changeLabel(change7), valueColor: changeColor(change7)),
+                        statTile('30-DAY CHANGE', changeLabel(change30), valueColor: changeColor(change30)),
+                        statTile('HIGHEST WEIGHT', range.highKg != null ? '${kgToDisplay(range.highKg!, unit).toStringAsFixed(1)} ${unit.label}' : '--'),
+                        statTile('LOWEST WEIGHT', range.lowKg != null ? '${kgToDisplay(range.lowKg!, unit).toStringAsFixed(1)} ${unit.label}' : '--'),
+                        statTile('LOGGED THIS MONTH', '$monthLogged / $monthTotal days'),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('METRIC BREAKDOWN', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.monitor_weight, color: VitalPalette.amber),
-                    title: const Text('Weight Timeline', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                    subtitle: const Text('Sorted chronologically by log date', style: TextStyle(color: Colors.white54, fontSize: 10)),
-                    trailing: const Text('Active', style: TextStyle(color: VitalPalette.amber, fontSize: 11, fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              ),
             ),
           ),
           actions: [
@@ -101,9 +171,169 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Future<void> _exportClinicalReport(BuildContext context) async {
+    await Printing.layoutPdf(onLayout: (format) => buildClinicalReportPdf(repo));
+  }
+
+  // Also copies to the clipboard (the Restore flow's paste button expects
+  // that), but leads with a share-sheet prompt so the backup lands
+  // somewhere durable instead of silently sitting in the clipboard where
+  // it's easy to forget about and lose to the next copy/paste.
+  Future<void> _shareBackup(BuildContext context) async {
+    final jsonString = repo.exportBackupJson();
+    await Clipboard.setData(ClipboardData(text: jsonString));
+
+    final dir = await Directory.systemTemp.createTemp('vital_backup');
+    final dateStamp = DateTime.now().toIso8601String().split('T')[0];
+    final file = File('${dir.path}/project_vital_backup_$dateStamp.json');
+    await file.writeAsString(jsonString);
+
+    await SharePlus.instance.share(ShareParams(
+      files: [XFile(file.path)],
+      subject: 'Project Vital Backup — $dateStamp',
+      text: 'Project Vital data backup. Save this somewhere safe (Drive, email to yourself, Files) — it also copied to your clipboard for the in-app Restore flow.',
+    ));
+  }
+
+  Future<void> _exportCsvData(BuildContext context) async {
+    final unit = repo.weightUnit;
+    final buffer = StringBuffer('date,weight_${unit.label},waist_cm,calories,protein_g,fasting_hours,steps,systolic,diastolic\n');
+    for (final key in repo.sortedDateKeys) {
+      final e = repo.entryForDate(key);
+      if (e == null) continue;
+      final w = e.weight != null ? kgToDisplay(e.weight!, unit).toStringAsFixed(1) : '';
+      buffer.writeln('$key,$w,${e.waist ?? ''},${e.calories ?? ''},${e.protein ?? ''},${e.fasting ?? ''},${e.steps ?? ''},${e.systolic ?? ''},${e.diastolic ?? ''}');
+    }
+
+    final dir = await Directory.systemTemp.createTemp('vital_export');
+    final dateStamp = DateTime.now().toIso8601String().split('T')[0];
+    final file = File('${dir.path}/project_vital_export_$dateStamp.csv');
+    await file.writeAsString(buffer.toString());
+
+    await SharePlus.instance.share(ShareParams(
+      files: [XFile(file.path)],
+      subject: 'Project Vital Data Export — $dateStamp',
+      text: 'Your logged Project Vital data, opens directly in Excel/Google Sheets.',
+    ));
+  }
+
+  void _showTrendsDialog(BuildContext context) {
+    final unit = repo.weightUnit;
+    final metrics = <String, ({String label, Color color, List<FlSpot> Function() spots})>{
+      'weight': (label: 'WEIGHT (${unit.label.toUpperCase()})', color: VitalPalette.amber, spots: () => repo.chronologicalWeightSpots().map((s) => FlSpot(s.x, kgToDisplay(s.y, unit))).toList()),
+      'waist': (label: 'WAISTLINE (CM)', color: VitalPalette.rose, spots: () => repo.metricSpots('waist')),
+      'calories': (label: 'CALORIES', color: VitalPalette.flame, spots: () => repo.metricSpots('calories')),
+      'protein': (label: 'PROTEIN (G)', color: VitalPalette.violet, spots: () => repo.metricSpots('protein')),
+      'fasting': (label: 'FASTING (HOURS)', color: VitalPalette.teal, spots: () => repo.metricSpots('fasting')),
+      'steps': (label: 'STEPS', color: VitalPalette.sky, spots: () => repo.metricSpots('steps')),
+      'systolic': (label: 'SYSTOLIC BP', color: VitalPalette.violet, spots: () => repo.metricSpots('systolic')),
+    };
+
+    String selected = 'weight';
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final metric = metrics[selected]!;
+            final spots = metric.spots();
+            final dateKeys = repo.sortedDateKeys;
+            final rangeLabel = dateKeys.isEmpty
+                ? 'No data yet'
+                : dateKeys.length == 1
+                    ? dateKeys.first
+                    : '${dateKeys.first}  →  ${dateKeys.last}';
+
+            return AlertDialog(
+              backgroundColor: VitalPalette.ink800,
+              title: const Text('TRENDS & GRAPHS', style: TextStyle(color: VitalPalette.amber, fontSize: 14, fontWeight: FontWeight.w900)),
+              content: SizedBox(
+                width: 480,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: metrics.entries.map((entry) {
+                        final isSelected = entry.key == selected;
+                        return InkWell(
+                          onTap: () => setDialogState(() => selected = entry.key),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: isSelected ? entry.value.color.withValues(alpha: 0.18) : Colors.black,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: isSelected ? entry.value.color : Colors.white24),
+                            ),
+                            child: Text(entry.value.label, style: TextStyle(color: isSelected ? entry.value.color : Colors.white54, fontWeight: FontWeight.w800, fontSize: 10)),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(rangeLabel, style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 220,
+                      child: LineChart(
+                        LineChartData(
+                          gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: null, getDrawingHorizontalLine: (v) => FlLine(color: Colors.white10, strokeWidth: 1)),
+                          titlesData: FlTitlesData(
+                            show: true,
+                            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                            bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                            leftTitles: AxisTitles(
+                              sideTitles: SideTitles(
+                                showTitles: true,
+                                reservedSize: 42,
+                                getTitlesWidget: (value, meta) => Text(value.toStringAsFixed(0), style: const TextStyle(color: Colors.white38, fontSize: 9)),
+                              ),
+                            ),
+                          ),
+                          borderData: FlBorderData(show: false),
+                          lineTouchData: LineTouchData(
+                            enabled: true,
+                            touchTooltipData: LineTouchTooltipData(
+                              getTooltipItems: (touchedSpots) => touchedSpots.map((s) => LineTooltipItem(s.y.toStringAsFixed(1), TextStyle(color: metric.color, fontWeight: FontWeight.w800, fontSize: 12))).toList(),
+                            ),
+                          ),
+                          lineBarsData: [
+                            LineChartBarData(
+                              spots: spots,
+                              isCurved: true,
+                              color: metric.color,
+                              barWidth: 2.5,
+                              dotData: FlDotData(show: spots.length <= 30),
+                              belowBarData: BarAreaData(show: true, color: metric.color.withValues(alpha: 0.12)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('CLOSE', style: TextStyle(color: Colors.white54)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showMoreMenuSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: VitalPalette.ink800,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
       builder: (context) {
@@ -120,21 +350,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
 
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 12),
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(4))),
-              const SizedBox(height: 16),
-              menuTile(Icons.history, VitalPalette.flame, 'Timeline History', 'Every logged day, chronologically', () => _showHistoryDialog(context)),
-              menuTile(Icons.insights, VitalPalette.amber, 'Progress Analysis', 'Weekly / monthly trend summary', () => _showAnalyticsDialog(context)),
-              menuTile(Icons.breakfast_dining, VitalPalette.violet, 'Meal Macro Presets', 'Stack saved meals into today', () => _showPresetLibraryDialog(context)),
-              menuTile(Icons.cloud_upload_outlined, VitalPalette.sky, 'Backup & Restore', 'Export or restore a full JSON backup', () => _showBackupCloudDialog(context)),
-              menuTile(Icons.file_upload_outlined, VitalPalette.sage, 'Import CSV', 'Bulk-import multiple days at once', () => _showImportCsvDialog(context)),
-              menuTile(Icons.help_outline, VitalPalette.teal, 'Help', 'How to use Project Vital', () => _showHelpDialog(context)),
-              menuTile(Icons.swap_horiz, VitalPalette.rose, 'Weight Unit', 'Currently ${repo.weightUnit.label.toUpperCase()} — tap to switch', () => _showUnitsDialog(context)),
-              const SizedBox(height: 8),
-            ],
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 12),
+                Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(4))),
+                const SizedBox(height: 16),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        menuTile(Icons.history, VitalPalette.flame, 'Timeline History', 'Every logged day, chronologically', () => _showHistoryDialog(context)),
+                        menuTile(Icons.insights, VitalPalette.amber, 'Progress Analysis', 'Weekly / monthly trend summary', () => _showAnalyticsDialog(context)),
+                        menuTile(Icons.show_chart, VitalPalette.sky, 'Trends & Graphs', 'Full chart for any tracked metric', () => _showTrendsDialog(context)),
+                        menuTile(Icons.breakfast_dining, VitalPalette.violet, 'Meal Macro Presets', 'Stack saved meals into today', () => _showPresetLibraryDialog(context)),
+                        menuTile(Icons.cloud_upload_outlined, VitalPalette.sky, 'Backup & Restore', 'Export or restore a full JSON backup', () => _showBackupCloudDialog(context)),
+                        menuTile(Icons.file_upload_outlined, VitalPalette.sage, 'Import CSV', 'Bulk-import multiple days at once', () => _showImportCsvDialog(context)),
+                        menuTile(Icons.picture_as_pdf_outlined, VitalPalette.flame, 'Clinical Report (PDF)', 'Patient info + 30-day weight/BP table', () => _exportClinicalReport(context)),
+                        menuTile(Icons.table_chart_outlined, VitalPalette.sage, 'Export Data (CSV)', 'Excel/Sheets-compatible spreadsheet export', () => _exportCsvData(context)),
+                        menuTile(Icons.help_outline, VitalPalette.teal, 'Help', 'How to use Project Vital', () => _showHelpDialog(context)),
+                        menuTile(Icons.swap_horiz, VitalPalette.rose, 'Weight Unit', 'Currently ${repo.weightUnit.label.toUpperCase()} — tap to switch', () => _showUnitsDialog(context)),
+                        menuTile(Icons.info_outline, VitalPalette.textSecondary, 'About', 'App info & disclaimer', () => _showAboutDialog(context)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         );
       },
@@ -168,7 +414,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       decoration: InputDecoration(labelText: 'Profile Name', labelStyle: const TextStyle(color: Colors.white54), filled: true, fillColor: Colors.black, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
                     ),
                     const SizedBox(height: 16),
-                    Row(
+                    SizedBox(
+                      height: 48,
+                      child: Row(
                       children: [
                         Expanded(
                           child: InkWell(
@@ -202,6 +450,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         ),
                       ],
+                      ),
                     ),
                     const SizedBox(height: 16),
                     TextField(
@@ -417,14 +666,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(backgroundColor: VitalPalette.amber, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(vertical: 14)),
                     icon: const Icon(Icons.download),
-                    label: const Text('DOWNLOAD BACKUP FILE (.JSON)', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
+                    label: const Text('SHARE BACKUP FILE (.JSON)', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
                     onPressed: () {
-                      Clipboard.setData(ClipboardData(text: repo.exportBackupJson()));
-
                       Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Backup JSON copied to clipboard & ready to save to Cloud/Drive!')),
-                      );
+                      _shareBackup(context);
                     },
                   ),
                 ),
@@ -573,30 +818,133 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Future<bool> _confirmDelete(BuildContext context, String dateKey) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: VitalPalette.ink800,
+          title: const Text('DELETE LOG?', style: TextStyle(color: VitalPalette.flame, fontSize: 14, fontWeight: FontWeight.w900)),
+          content: Text('This permanently deletes the entry for $dateKey. This cannot be undone.', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('CANCEL', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: VitalPalette.flame, foregroundColor: Colors.black),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('DELETE', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed ?? false;
+  }
+
   void _showHistoryDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (context) {
-        final keys = repo.historyBox.keys.toList();
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final keys = repo.historyBox.keys.toList();
+            return AlertDialog(
+              backgroundColor: VitalPalette.ink800,
+              title: const Text('HISTORICAL TIMELINE', style: TextStyle(color: VitalPalette.amber, fontSize: 16, fontWeight: FontWeight.w900)),
+              content: SizedBox(
+                width: 450,
+                height: 300,
+                child: keys.isEmpty
+                    ? const Center(child: Text('No historical logs recorded yet.', style: TextStyle(color: Colors.white54, fontSize: 12)))
+                    : ListView.builder(
+                        itemCount: keys.length,
+                        itemBuilder: (context, index) {
+                          final key = keys[index];
+                          final val = repo.historyBox.get(key);
+                          return ListTile(
+                            title: Text('$key', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            subtitle: Text('Data: $val', style: const TextStyle(color: VitalPalette.amber, fontSize: 12)),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete_outline, color: VitalPalette.flame, size: 20),
+                              tooltip: 'Delete this log',
+                              onPressed: () async {
+                                final confirmed = await _confirmDelete(context, key);
+                                if (confirmed) {
+                                  repo.historyBox.delete(key);
+                                  setDialogState(() {});
+                                }
+                              },
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('CLOSE', style: TextStyle(color: Colors.white54)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showAboutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) {
         return AlertDialog(
           backgroundColor: VitalPalette.ink800,
-          title: const Text('HISTORICAL TIMELINE', style: TextStyle(color: VitalPalette.amber, fontSize: 16, fontWeight: FontWeight.w900)),
+          title: const Text('ABOUT PROJECT VITAL', style: TextStyle(color: VitalPalette.amber, fontSize: 14, fontWeight: FontWeight.w900)),
           content: SizedBox(
             width: 450,
-            height: 300,
-            child: keys.isEmpty
-                ? const Center(child: Text('No historical logs recorded yet.', style: TextStyle(color: Colors.white54, fontSize: 12)))
-                : ListView.builder(
-                    itemCount: keys.length,
-                    itemBuilder: (context, index) {
-                      final key = keys[index];
-                      final val = repo.historyBox.get(key);
-                      return ListTile(
-                        title: Text('$key', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                        subtitle: Text('Data: $val', style: const TextStyle(color: VitalPalette.amber, fontSize: 12)),
-                      );
-                    },
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Project Vital', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+                  const SizedBox(height: 4),
+                  const Text('Version 1.0.0', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'A simple, private, offline-first daily health tracker for weight, waistline, calories, protein, fasting, steps, and blood pressure. All your data stays on this device unless you choose to back it up or export it.',
+                    style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
                   ),
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: VitalPalette.flame.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: VitalPalette.flame.withValues(alpha: 0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.info_outline, color: VitalPalette.flame, size: 18),
+                            SizedBox(width: 8),
+                            Text('DISCLAIMER', style: TextStyle(color: VitalPalette.flame, fontWeight: FontWeight.w900, fontSize: 12)),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Project Vital is a personal tracking tool. It was not built by doctors, nurses, or licensed healthcare professionals — we just track our own numbers. Nothing in this app, including the BMI classification, trend charts, or PDF reports, is medical advice, a diagnosis, or a substitute for professional care. Always consult a qualified healthcare provider about your health, weight, or blood pressure.',
+                          style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
           actions: [
             TextButton(
@@ -653,6 +1001,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   helpItem(Icons.cloud_upload_outlined, VitalPalette.sky, 'Backup & Restore', 'Export all your data as JSON to the clipboard, or restore from a previous backup. Restoring replaces all current data.'),
                   helpItem(Icons.file_upload_outlined, VitalPalette.sage, 'Import CSV', 'Paste multiple days of data at once, one row per day.'),
                   helpItem(Icons.person_outline, VitalPalette.rose, 'Profile & Goals', 'Tap your avatar (top right) to update your name, height, gender, or goal weight.'),
+                  const Divider(color: Colors.white24, height: 24),
+                  const Text('REPORT AN ISSUE OR SUGGESTION', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () {
+                      Clipboard.setData(const ClipboardData(text: 'help63911@gmail.com'));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Email address copied to clipboard')),
+                      );
+                    },
+                    child: Row(
+                      children: [
+                        const Icon(Icons.email_outlined, color: VitalPalette.teal, size: 18),
+                        const SizedBox(width: 10),
+                        const Text('help63911@gmail.com', style: TextStyle(color: VitalPalette.teal, fontWeight: FontWeight.w700, fontSize: 13)),
+                        const SizedBox(width: 8),
+                        const Icon(Icons.copy, color: Colors.white38, size: 14),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -699,6 +1067,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               title: const Text('WEIGHT UNIT', style: TextStyle(color: VitalPalette.amber, fontSize: 14, fontWeight: FontWeight.w900)),
               content: SizedBox(
                 width: 360,
+                height: 56,
                 child: Row(
                   children: [
                     unitChip(WeightUnit.kg, 'KILOGRAMS (KG)'),
@@ -1012,16 +1381,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
             return Scaffold(
               appBar: AppBar(
-                toolbarHeight: 78,
+                toolbarHeight: 92,
                 title: Padding(
                   padding: const EdgeInsets.only(left: 4.0, top: 6.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(_greetingLabel(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: VitalPalette.amber, letterSpacing: 3.0)),
-                      const SizedBox(height: 3),
-                      Text(userName ?? 'Athlete', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w600, color: VitalPalette.textPrimary, letterSpacing: -0.2)),
+                      Text(_greetingLabel(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: VitalPalette.amber, letterSpacing: 3.0)),
+                      const SizedBox(height: 4),
+                      Text(userName ?? 'Athlete', style: const TextStyle(fontSize: 27, fontWeight: FontWeight.w700, color: VitalPalette.textPrimary, letterSpacing: -0.3)),
                     ],
                   ),
                 ),
@@ -1055,37 +1424,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Column(
                       children: [
                         vitalGlassCard(
-                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 15),
-                          borderRadius: BorderRadius.circular(22),
+                          padding: const EdgeInsets.fromLTRB(18, 18, 18, 17),
+                          borderRadius: BorderRadius.circular(24),
                           child: Row(
                             children: [
-                              GoalRing(progress: _goalProgressFraction(latest, goalWeightKg), size: 58),
-                              const SizedBox(width: 16),
+                              GoalRing(progress: _goalProgressFraction(latest, goalWeightKg), size: 74),
+                              const SizedBox(width: 18),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('GOAL · ${goalWeightDisplay.toStringAsFixed(1)} ${unit.label.toUpperCase()}', style: const TextStyle(color: VitalPalette.textMuted, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
-                                    const SizedBox(height: 5),
+                                    Text('GOAL · ${goalWeightDisplay.toStringAsFixed(1)} ${unit.label.toUpperCase()}', style: const TextStyle(color: VitalPalette.textMuted, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+                                    const SizedBox(height: 6),
                                     Text(
                                       diff > 0 ? '${diff.toStringAsFixed(1)} ${unit.label} remaining' : 'Target reached!',
-                                      style: const TextStyle(fontFamily: VitalPalette.numeralFont, color: VitalPalette.textPrimary, fontSize: 17, fontWeight: FontWeight.w600),
+                                      style: const TextStyle(fontFamily: VitalPalette.numeralFont, color: VitalPalette.textPrimary, fontSize: 24, fontWeight: FontWeight.w700),
                                     ),
                                   ],
                                 ),
                               ),
                               if (bmi != null)
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                   decoration: BoxDecoration(
                                     color: (bmiColors[bmi.label] ?? VitalPalette.textMuted).withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(10),
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
-                                      Text(bmi.bmi.toStringAsFixed(1), style: TextStyle(fontFamily: VitalPalette.numeralFont, color: bmiColors[bmi.label] ?? VitalPalette.textMuted, fontSize: 15, fontWeight: FontWeight.w700)),
-                                      Text(bmi.label.toUpperCase(), style: TextStyle(color: bmiColors[bmi.label] ?? VitalPalette.textMuted, fontSize: 8.5, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+                                      Text(bmi.bmi.toStringAsFixed(1), style: TextStyle(fontFamily: VitalPalette.numeralFont, color: bmiColors[bmi.label] ?? VitalPalette.textMuted, fontSize: 20, fontWeight: FontWeight.w700)),
+                                      Text(bmi.label.toUpperCase(), style: TextStyle(color: bmiColors[bmi.label] ?? VitalPalette.textMuted, fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
                                     ],
                                   ),
                                 ),
