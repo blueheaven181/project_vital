@@ -417,25 +417,21 @@ void _loadData() {
     userName = vitalsBox.get('user_name', defaultValue: 'Athlete');
     goalWeight = vitalsBox.get('user_goal_weight', defaultValue: 63.0);
     
-    // Load general latest values saved in vitalsBox
-    final double latestW = vitalsBox.get('latest_weight', defaultValue: 0.0);
-    final double latestWaist = vitalsBox.get('latest_waistline', defaultValue: 0.0);
+    // Load latest values from vitalsBox into your state variables
+    savedWeight = vitalsBox.get('latest_weight');
+    savedWaistline = vitalsBox.get('latest_waistline');
+    savedCalories = vitalsBox.get('latest_calories');
+    savedProtein = vitalsBox.get('latest_protein');
+    savedFasting = vitalsBox.get('latest_fasting');
+    savedSteps = vitalsBox.get('latest_steps');
 
-    if (todayLog != null) {
-      currentWeight = '${todayLog['weight'] ?? latestW} kg';
-      currentWaist = '${todayLog['waist'] ?? latestWaist} cm';
-      currentCalories = '${todayLog['calories'] ?? 0}';
-      currentProtein = '${todayLog['protein'] ?? 0}g';
-      currentFasting = '${todayLog['fasting'] ?? 0.0}h';
-      currentSteps = '${todayLog['steps'] ?? 0}';
-    } else {
-      // Fallback to latest global metrics if no exact date match for today yet
-      currentWeight = latestW > 0 ? '$latestW kg' : 'No log today';
-      currentWaist = latestWaist > 0 ? '$latestWaist cm' : 'No log today';
-      currentCalories = '${vitalsBox.get('latest_calories', defaultValue: 0)}';
-      currentProtein = '${vitalsBox.get('latest_protein', defaultValue: 0)}g';
-      currentFasting = '${vitalsBox.get('latest_fasting', defaultValue: 0.0)}h';
-      currentSteps = '${vitalsBox.get('latest_steps', defaultValue: 0)}';
+    if (todayLog != null && todayLog is Map) {
+      if (todayLog['weight'] != null) savedWeight = double.tryParse(todayLog['weight'].toString());
+      if (todayLog['waist'] != null) savedWaistline = double.tryParse(todayLog['waist'].toString());
+      if (todayLog['calories'] != null) savedCalories = int.tryParse(todayLog['calories'].toString());
+      if (todayLog['protein'] != null) savedProtein = int.tryParse(todayLog['protein'].toString());
+      if (todayLog['fasting'] != null) savedFasting = double.tryParse(todayLog['fasting'].toString());
+      if (todayLog['steps'] != null) savedSteps = int.tryParse(todayLog['steps'].toString());
     }
   });
 }
