@@ -1,10 +1,10 @@
 # Roadmap
 
-## Near-term
+## Done
 
-- **Architecture refactor** — split `lib/main.dart` (~1,500 lines) into `models/` (a `VitalsEntry` class instead of raw `Map` key-guessing), `services/` (a `VitalsRepository` wrapping Hive as the single read/write surface), and `screens/`/`widgets/`. This directly reduces the risk of the "two divergent write paths" bug class that caused the original 0/`—` dashboard bug.
-- **Reactive data binding** — replace manual `_loadData()` + `setState()` calls after every write with `ValueListenableBuilder` on `historyBox.listenable()`, so the UI updates automatically from any write path.
-- **Repo cleanup** — remove `lib/models/vital_record.dart` and `vital_record.g.dart`, leftover unreferenced generated code from an earlier, abandoned Isar-based data-model attempt. Isar isn't even a `pubspec.yaml` dependency; these files currently cause ~500 false errors on a whole-project `flutter analyze`.
+- **Architecture refactor** — split `lib/main.dart` (~1,500 lines) into `models/` (`VitalsEntry` instead of raw `Map` key-guessing), `services/` (`VitalsRepository` wrapping Hive as the single read/write surface), and `screens/`/`widgets/`.
+- **Reactive data binding** — dashboard now drives its UI off `ValueListenableBuilder` on `vitalsBox.listenable()` / `historyBox.listenable()` instead of manual `_loadData()` + `setState()` calls after every write.
+- **Repo cleanup** — removed `lib/models/vital_record.dart` and `vital_record.g.dart`, leftover unreferenced generated code from an earlier, abandoned Isar-based data-model attempt.
 
 ## Design
 
