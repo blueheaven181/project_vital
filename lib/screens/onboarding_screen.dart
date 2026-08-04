@@ -17,10 +17,10 @@ class OnboardingScreen extends StatefulWidget {
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController nameController = TextEditingController();
-  final TextEditingController ageController = TextEditingController(text: "41");
-  final TextEditingController heightController = TextEditingController(text: "5.45");
-  final TextEditingController weightController = TextEditingController(text: "72.5");
-  final TextEditingController goalWeightController = TextEditingController(text: "63.0");
+  final TextEditingController ageController = TextEditingController();
+  final TextEditingController heightController = TextEditingController();
+  final TextEditingController weightController = TextEditingController();
+  final TextEditingController goalWeightController = TextEditingController();
 
   bool isHeightInFeet = true;
   String gender = 'Male';
@@ -90,7 +90,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         controller: ageController,
                         keyboardType: TextInputType.number,
                         style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(labelText: 'Age', labelStyle: const TextStyle(color: Colors.white54), filled: true, fillColor: Colors.black, border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)),
+                        decoration: InputDecoration(labelText: 'Age', hintText: 'e.g. 30', hintStyle: const TextStyle(color: Colors.white24), labelStyle: const TextStyle(color: Colors.white54), filled: true, fillColor: Colors.black, border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -116,8 +116,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           InkWell(
                             onTap: () {
                               setState(() {
+                                final typed = double.tryParse(heightController.text);
                                 isHeightInFeet = !isHeightInFeet;
-                                heightController.text = isHeightInFeet ? "5.45" : "164";
+                                if (typed != null) {
+                                  // Convert the value the user already typed instead of
+                                  // discarding it for a canned example number.
+                                  final converted = isHeightInFeet ? typed / 30.48 : typed * 30.48;
+                                  heightController.text = converted.toStringAsFixed(isHeightInFeet ? 2 : 0);
+                                }
                               });
                             },
                             child: Container(
@@ -221,7 +227,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         controller: weightController,
                         keyboardType: TextInputType.number,
                         style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(labelText: 'Current Weight (${weightUnit.label})', labelStyle: const TextStyle(color: VitalPalette.amber), filled: true, fillColor: Colors.black, border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)),
+                        decoration: InputDecoration(labelText: 'Current Weight (${weightUnit.label})', hintText: weightUnit == WeightUnit.kg ? 'e.g. 70' : 'e.g. 154', hintStyle: const TextStyle(color: Colors.white24), labelStyle: const TextStyle(color: VitalPalette.amber), filled: true, fillColor: Colors.black, border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -235,6 +241,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               style: const TextStyle(color: Colors.white),
                               decoration: InputDecoration(
                                 labelText: 'Goal Weight (${weightUnit.label})',
+                                hintText: weightUnit == WeightUnit.kg ? 'e.g. 63' : 'e.g. 139',
+                                hintStyle: const TextStyle(color: Colors.white24),
                                 labelStyle: const TextStyle(color: VitalPalette.rose),
                                 filled: true,
                                 fillColor: Colors.black,
