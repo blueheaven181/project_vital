@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/vitals_repository.dart';
 import '../theme/vital_palette.dart';
@@ -225,7 +226,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     Expanded(
                       child: TextField(
                         controller: weightController,
-                        keyboardType: TextInputType.number,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(labelText: 'Current Weight (${weightUnit.label})', hintText: weightUnit == WeightUnit.kg ? 'e.g. 70' : 'e.g. 154', hintStyle: const TextStyle(color: Colors.white24), labelStyle: const TextStyle(color: VitalPalette.amber), filled: true, fillColor: Colors.black, border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)),
                       ),
@@ -237,7 +239,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           Expanded(
                             child: TextField(
                               controller: goalWeightController,
-                              keyboardType: TextInputType.number,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
                               style: const TextStyle(color: Colors.white),
                               decoration: InputDecoration(
                                 labelText: 'Goal Weight (${weightUnit.label})',
