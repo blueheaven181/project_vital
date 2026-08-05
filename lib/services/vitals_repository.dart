@@ -26,6 +26,32 @@ class VitalsRepository {
 
   void setWeightUnit(WeightUnit unit) => vitalsBox.put('user_weight_unit', unit.label);
 
+  bool get isFasting => vitalsBox.get('fasting_active', defaultValue: false) as bool;
+
+  DateTime? get lastMealAt {
+    final raw = vitalsBox.get('last_meal_at');
+    return raw is String ? DateTime.tryParse(raw) : null;
+  }
+
+  void startFasting(DateTime at) {
+    vitalsBox.put('fasting_active', true);
+    vitalsBox.put('last_meal_at', at.toIso8601String());
+  }
+
+  // Ends the current fast and records its total duration as today's
+  // 'fasting' hours, so historical trend charts and CSV/PDF export keep
+  // working the same way whether that field came from a live-tracked fast
+  // or a manually typed/imported number.
+  void endFasting() {
+    final start = lastMealAt;
+    if (start != null) {
+      final hours = DateTime.now().difference(start).inMinutes / 60.0;
+      final todayKey = DateTime.now().toIso8601String().split('T')[0];
+      upsertHistoryEntry(todayKey, {'fasting': double.parse(hours.toStringAsFixed(1))});
+    }
+    vitalsBox.put('fasting_active', false);
+  }
+
   void seedDefaultPresetsIfEmpty() {
     if (presetsBox.isEmpty) {
       presetsBox.put('Morning Oats', {'cals': 420, 'protein': 35});

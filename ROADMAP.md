@@ -26,9 +26,9 @@ where the *goal* was met, with a note where the tech diverged from the plan.
 - [ ] Verify 15-second tracking loop functionality — never explicitly timed/verified.
 
 ### Phase 4: Fasting & Analytics
-- [ ] Add the Intermittent Fasting toggle and Last Meal timestamp — only a raw "fasting hours" number field exists today, no toggle or timestamp.
-- [ ] Build a trend service for 7-Day Moving Averages — sparklines currently plot raw chronological points, not smoothed.
-- [ ] Integrate real trend indicators on the Dashboard — card subtitles like "TREND: -0.5cm" are hardcoded placeholder text, not computed.
+- [x] Add the Intermittent Fasting toggle and Last Meal timestamp — tapping the FASTING card opens a live start/end-fast dialog with a ticking elapsed-time display; ending a fast auto-saves the total hours to today's log. The manual "Fasting Hours" field in the quick-log form stays available for backdating past days.
+- [x] Build a trend service for 7-Day Moving Averages — Trends & Graphs has a RAW / 7-DAY AVG toggle per metric.
+- [x] Integrate real trend indicators on the Dashboard — the WAISTLINE card's "TREND: ..." subtitle is now a real computed 7-day delta instead of hardcoded placeholder text.
 
 ### Phase 5: Testing & Hardening
 - [ ] Setup `mocktail` for dependency-injection testing — not used; tests hit real Hive I/O in temp dirs instead (see test file header comments for why).
@@ -36,10 +36,10 @@ where the *goal* was met, with a note where the tech diverged from the plan.
 - [ ] Graceful error handling for local storage edge cases — partial: JSON parsing and spot generation are try/caught, not comprehensive.
 
 ### Phase 6: Clinical Export & Polish
-- [ ] Integrate `pdf`, `csv`, `share_plus` packages — CSV import and JSON export exist but via paste/clipboard only; no packages, no PDF.
-- [ ] Design a PDF layout with patient info and 30-day BP/Weight tables — no PDF export exists; BP isn't tracked at all.
+- [x] Integrate `pdf`, `csv`, `share_plus` packages — CSV export/import handled directly rather than via a dedicated `csv` package, but `pdf`, `printing`, and `share_plus` are all wired in.
+- [x] Design a PDF layout with patient info and 30-day BP/Weight tables — titled "Weight Tracker Report", includes a per-day BMI classification column and a disclaimer footer.
 - [ ] Compile a Release Build (Android/iOS) — only debug APKs have been built so far.
-- [x] Deploy to physical device — informally: debug APKs sideloaded to your Vivo V30.
+- [x] Deploy to physical device — informally: debug APKs sideloaded to your Vivo V30, plus a web build hosted on GitHub Pages for sharing.
 
 ## Done
 
@@ -49,14 +49,15 @@ where the *goal* was met, with a note where the tech diverged from the plan.
 
 ## Design
 
-- Extend the dark-glass redesign's micro-interactions (press states, animated transitions) beyond the dashboard into the remaining dialogs (History, Presets, Analytics) for full visual consistency.
+- ~~Extend the dark-glass redesign's micro-interactions beyond the dashboard into the remaining dialogs for visual consistency~~ — done: all dialogs now use a consistent rounded shape + hairline border matching the rest of the app, instead of Flutter's default corner radius.
 - Revisit typography — currently uses the platform's built-in `monospace` fallback for numerals; a bundled variable font (e.g. via `google_fonts`) would sharpen this further, at the cost of a new dependency.
 
 ## Platform
 
 - Get USB or wireless `adb` debugging working reliably for on-device iteration (currently blocked by a Windows/Vivo USB driver issue) so `flutter run` can be used directly instead of build-and-sideload.
-- iOS support/testing (currently untested on this project).
+- Real native iOS app (currently untested on this project) — would need a Mac + Xcode + Apple Developer account, none of which are available from this Windows dev machine. A Flutter web build is hosted on GitHub Pages as a stopgap for sharing with iOS users.
 
 ## Data
 
-- File-based CSV/JSON export and import (currently clipboard-paste only, no direct file picker) — would need the `file_picker` package plus platform storage permissions.
+- File-based JSON backup and CSV export are done, via `share_plus`'s native share sheet (save to Drive/email/Files) rather than a direct file-picker save dialog.
+- CSV *import* is still paste-only (no file picker) — would need the `file_picker` package plus platform storage permissions to pick a file directly instead of pasting its contents.

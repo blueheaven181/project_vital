@@ -1,3 +1,4 @@
+﻿import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 
@@ -26,12 +27,51 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   late final VitalsRepository repo;
+  Timer? _fastingTicker;
 
   @override
   void initState() {
     super.initState();
     repo = VitalsRepository();
     repo.seedDefaultPresetsIfEmpty();
+    // Ticks the FASTING card's live elapsed-time display while a fast is
+    // active; harmless no-op rebuild the rest of the time.
+    _fastingTicker = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _fastingTicker?.cancel();
+    super.dispose();
+  }
+
+  // Generic "value N days ago vs latest" delta, used for real trend
+  // indicators instead of hardcoded placeholder text.
+  double? _metricChangeSince(int days, double? Function(VitalsEntry) selector) {
+    final keys = repo.sortedDateKeys;
+    if (keys.isEmpty) return null;
+    final latestDate = DateTime.parse(keys.last);
+    final latestEntry = repo.entryForDate(keys.last);
+    final latestValue = latestEntry != null ? selector(latestEntry) : null;
+    if (latestValue == null) return null;
+    final cutoff = latestDate.subtract(Duration(days: days));
+    for (final k in keys) {
+      final d = DateTime.parse(k);
+      if (d.isBefore(cutoff)) continue;
+      final e = repo.entryForDate(k);
+      final value = e != null ? selector(e) : null;
+      if (value != null) return latestValue - value;
+    }
+    return null;
+  }
+
+  String _waistTrendSubtitle() {
+    final change = _metricChangeSince(7, (e) => e.waist);
+    if (change == null) return 'NO TREND YET';
+    final arrow = change < 0 ? '▼' : (change > 0 ? '▲' : '→');
+    return 'TREND: $arrow ${change.abs().toStringAsFixed(1)}cm/wk';
   }
 
   ({double changeKg, DateTime fromDate})? _weightChangeSince(int days) {
@@ -139,6 +179,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: VitalPalette.ink800,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: VitalPalette.hairlineStrong)),
           title: const Text('PROGRESS ANALYSIS', style: TextStyle(color: VitalPalette.amber, fontSize: 14, fontWeight: FontWeight.w900)),
           content: SizedBox(
             width: 450,
@@ -217,6 +258,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ));
   }
 
+  List<FlSpot> _movingAverage(List<FlSpot> spots, int window) {
+    final result = <FlSpot>[];
+    for (var i = 0; i < spots.length; i++) {
+      final start = (i - window + 1).clamp(0, spots.length);
+      final windowSpots = spots.sublist(start, i + 1);
+      final avg = windowSpots.map((s) => s.y).reduce((a, b) => a + b) / windowSpots.length;
+      result.add(FlSpot(spots[i].x, avg));
+    }
+    return result;
+  }
+
   void _showTrendsDialog(BuildContext context) {
     final unit = repo.weightUnit;
     final metrics = <String, ({String label, Color color, List<FlSpot> Function() spots})>{
@@ -230,6 +282,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     };
 
     String selected = 'weight';
+    bool showMovingAverage = false;
 
     showDialog(
       context: context,
@@ -237,7 +290,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             final metric = metrics[selected]!;
-            final spots = metric.spots();
+            final rawSpots = metric.spots();
+            final spots = showMovingAverage ? _movingAverage(rawSpots, 7) : rawSpots;
             final dateKeys = repo.sortedDateKeys;
             final rangeLabel = dateKeys.isEmpty
                 ? 'No data yet'
@@ -247,6 +301,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
             return AlertDialog(
               backgroundColor: VitalPalette.ink800,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: VitalPalette.hairlineStrong)),
               title: const Text('TRENDS & GRAPHS', style: TextStyle(color: VitalPalette.amber, fontSize: 14, fontWeight: FontWeight.w900)),
               content: SizedBox(
                 width: 480,
@@ -274,7 +329,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       }).toList(),
                     ),
                     const SizedBox(height: 16),
-                    Text(rangeLabel, style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w600)),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(rangeLabel, style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w600)),
+                        InkWell(
+                          onTap: () => setDialogState(() => showMovingAverage = !showMovingAverage),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: showMovingAverage ? metric.color.withValues(alpha: 0.18) : Colors.black,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: showMovingAverage ? metric.color : Colors.white24),
+                            ),
+                            child: Text(
+                              showMovingAverage ? '7-DAY AVG' : 'RAW',
+                              style: TextStyle(color: showMovingAverage ? metric.color : Colors.white54, fontWeight: FontWeight.w800, fontSize: 10),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 8),
                     SizedBox(
                       height: 220,
@@ -402,6 +477,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           builder: (context, setDialogState) {
             return AlertDialog(
               backgroundColor: VitalPalette.ink800,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: VitalPalette.hairlineStrong)),
               title: const Text('PROFILE & GOAL SETTINGS', style: TextStyle(color: VitalPalette.amber, fontSize: 16, fontWeight: FontWeight.w900)),
               content: SizedBox(
                 width: 420,
@@ -546,6 +622,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             final presetKeys = repo.presetsBox.keys.toList();
             return AlertDialog(
               backgroundColor: VitalPalette.ink800,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: VitalPalette.hairlineStrong)),
               title: const Text('CUSTOM MEAL MACRO STACKER', style: TextStyle(color: VitalPalette.violet, fontSize: 16, fontWeight: FontWeight.w900)),
               content: SizedBox(
                 width: 480,
@@ -651,6 +728,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: VitalPalette.ink800,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: VitalPalette.hairlineStrong)),
           title: const Text('DATA BACKUP & CLOUD SYNC', style: TextStyle(color: VitalPalette.amber, fontSize: 15, fontWeight: FontWeight.w900)),
           content: SizedBox(
             width: 420,
@@ -716,6 +794,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: VitalPalette.ink800,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: VitalPalette.hairlineStrong)),
           title: const Text('RESTORE FROM BACKUP', style: TextStyle(color: VitalPalette.flame, fontSize: 14, fontWeight: FontWeight.w900)),
           content: SizedBox(
             width: 420,
@@ -770,6 +849,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: VitalPalette.ink800,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: VitalPalette.hairlineStrong)),
           title: const Text('IMPORT CSV', style: TextStyle(color: VitalPalette.sage, fontSize: 14, fontWeight: FontWeight.w900)),
           content: SizedBox(
             width: 420,
@@ -830,6 +910,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: VitalPalette.ink800,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: VitalPalette.hairlineStrong)),
           title: const Text('DELETE LOG?', style: TextStyle(color: VitalPalette.flame, fontSize: 14, fontWeight: FontWeight.w900)),
           content: Text('This permanently deletes the entry for $dateKey. This cannot be undone.', style: const TextStyle(color: Colors.white70, fontSize: 13)),
           actions: [
@@ -858,6 +939,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             final keys = repo.historyBox.keys.toList();
             return AlertDialog(
               backgroundColor: VitalPalette.ink800,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: VitalPalette.hairlineStrong)),
               title: const Text('HISTORICAL TIMELINE', style: TextStyle(color: VitalPalette.amber, fontSize: 16, fontWeight: FontWeight.w900)),
               content: SizedBox(
                 width: 450,
@@ -906,6 +988,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: VitalPalette.ink800,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: VitalPalette.hairlineStrong)),
           title: const Text('ABOUT PROJECT VITAL', style: TextStyle(color: VitalPalette.amber, fontSize: 14, fontWeight: FontWeight.w900)),
           content: SizedBox(
             width: 450,
@@ -992,6 +1075,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: VitalPalette.ink800,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: VitalPalette.hairlineStrong)),
           title: const Text('HOW TO USE PROJECT VITAL', style: TextStyle(color: VitalPalette.amber, fontSize: 14, fontWeight: FontWeight.w900)),
           content: SizedBox(
             width: 450,
@@ -1001,6 +1085,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   helpItem(Icons.add_circle_outline, VitalPalette.amber, "Record today's vitals", 'Tap the + button to log weight, waistline, calories, protein, fasting hours, and steps for today.'),
+                  helpItem(Icons.timer_outlined, VitalPalette.teal, 'Fasting Timer', 'Tap the FASTING card to start/end a live fast. Ending it saves the total hours to today\'s log automatically.'),
                   helpItem(Icons.history, VitalPalette.flame, 'Timeline History', "See every day you've logged, in chronological order, from the More menu."),
                   helpItem(Icons.insights, VitalPalette.amber, 'Progress Analysis', 'A quick summary of your logging activity and trends.'),
                   helpItem(Icons.breakfast_dining, VitalPalette.violet, 'Meal Macro Presets', "Save meals you eat often, then stack their calories/protein into today's total with one tap."),
@@ -1042,6 +1127,100 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  String _formatTime(DateTime dt) {
+    final hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final period = dt.hour < 12 ? 'AM' : 'PM';
+    return '$hour12:$minute $period';
+  }
+
+  void _showFastingDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final isFasting = repo.isFasting;
+            final lastMealAt = repo.lastMealAt;
+            final elapsed = (isFasting && lastMealAt != null) ? DateTime.now().difference(lastMealAt) : null;
+
+            return AlertDialog(
+              backgroundColor: VitalPalette.ink800,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: VitalPalette.hairlineStrong)),
+              title: const Text('INTERMITTENT FASTING', style: TextStyle(color: VitalPalette.teal, fontSize: 14, fontWeight: FontWeight.w900)),
+              content: SizedBox(
+                width: 380,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: isFasting && lastMealAt != null
+                      ? [
+                          const Text('FASTING FOR', style: TextStyle(color: VitalPalette.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.0)),
+                          const SizedBox(height: 6),
+                          Text('${elapsed!.inHours}h ${elapsed.inMinutes % 60}m', style: const TextStyle(fontFamily: VitalPalette.numeralFont, color: VitalPalette.teal, fontSize: 32, fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 6),
+                          Text('Since ${_formatTime(lastMealAt)} on ${lastMealAt.toIso8601String().split('T')[0]}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                          const SizedBox(height: 20),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: VitalPalette.teal, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(vertical: 14)),
+                              onPressed: () {
+                                repo.endFasting();
+                                setDialogState(() {});
+                              },
+                              child: const Text('END FAST', style: TextStyle(fontWeight: FontWeight.w900)),
+                            ),
+                          ),
+                        ]
+                      : [
+                          const Text('Not currently fasting. Start now, or set when you last ate to track from that point.', style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4)),
+                          const SizedBox(height: 20),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: VitalPalette.teal, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(vertical: 14)),
+                              onPressed: () {
+                                repo.startFasting(DateTime.now());
+                                setDialogState(() {});
+                              },
+                              child: const Text('START FASTING NOW', style: TextStyle(fontWeight: FontWeight.w900)),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(side: const BorderSide(color: VitalPalette.teal)),
+                              onPressed: () async {
+                                final picked = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+                                if (picked != null) {
+                                  final now = DateTime.now();
+                                  var lastMeal = DateTime(now.year, now.month, now.day, picked.hour, picked.minute);
+                                  if (lastMeal.isAfter(now)) lastMeal = lastMeal.subtract(const Duration(days: 1));
+                                  repo.startFasting(lastMeal);
+                                  setDialogState(() {});
+                                }
+                              },
+                              child: const Text('I LAST ATE AT...', style: TextStyle(color: VitalPalette.teal, fontWeight: FontWeight.w900)),
+                            ),
+                          ),
+                        ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('CLOSE', style: TextStyle(color: Colors.white54)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showUnitsDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -1070,6 +1249,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
             return AlertDialog(
               backgroundColor: VitalPalette.ink800,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: VitalPalette.hairlineStrong)),
               title: const Text('WEIGHT UNIT', style: TextStyle(color: VitalPalette.amber, fontSize: 14, fontWeight: FontWeight.w900)),
               content: SizedBox(
                 width: 360,
@@ -1141,11 +1321,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildGridCard(String title, String value, String subtitle, IconData icon, Color accentColor, List<FlSpot> sparklineSpots) {
-    return vitalGlassCard(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 11),
-      borderRadius: BorderRadius.circular(20),
-      child: Column(
+  Widget _buildGridCard(String title, String value, String subtitle, IconData icon, Color accentColor, List<FlSpot> sparklineSpots, {VoidCallback? onTap}) {
+    final content = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -1210,7 +1387,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
         ],
-      ),
+      );
+
+    return vitalGlassCard(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 11),
+      borderRadius: BorderRadius.circular(20),
+      child: onTap == null
+          ? content
+          : InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(20),
+              child: content,
+            ),
     );
   }
 
@@ -1379,7 +1567,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
             String currentWaist = latest?.waist != null ? "${latest?.waist} cm" : "-- cm";
             String currentCalories = latest?.calories != null ? "${latest?.calories}" : "--";
             String currentProtein = latest?.protein != null ? "${latest?.protein} g" : "-- g";
-            String currentFasting = latest?.fasting != null ? "${latest?.fasting}h" : "--";
+            final isFasting = repo.isFasting;
+            final lastMealAt = repo.lastMealAt;
+            String currentFasting;
+            String fastingSubtitle;
+            if (isFasting && lastMealAt != null) {
+              final elapsed = DateTime.now().difference(lastMealAt);
+              currentFasting = "${elapsed.inHours}h ${elapsed.inMinutes % 60}m";
+              fastingSubtitle = "FASTING SINCE ${_formatTime(lastMealAt)}";
+            } else {
+              currentFasting = latest?.fasting != null ? "${latest?.fasting}h" : "--";
+              fastingSubtitle = "TAP TO START FAST";
+            }
             String currentSteps = latest?.steps != null ? "${latest?.steps}" : "--";
             String currentBP = (latest?.systolic != null && latest?.diastolic != null) ? "${latest?.systolic}/${latest?.diastolic}" : "--/--";
 
@@ -1493,10 +1692,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             childAspectRatio: 0.95,
                             children: [
                               _buildGridCard("WEIGHT", currentWeight, "GOAL: ${goalWeightDisplay.toStringAsFixed(1)}", Icons.monitor_weight, VitalPalette.amber, weightSpots),
-                              _buildGridCard("WAISTLINE", currentWaist, "TREND: -0.5cm", Icons.straighten, VitalPalette.rose, waistSpots),
+                              _buildGridCard("WAISTLINE", currentWaist, _waistTrendSubtitle(), Icons.straighten, VitalPalette.rose, waistSpots),
                               _buildGridCard("CALORIES", currentCalories, "BUDGET: 2000", Icons.local_fire_department, VitalPalette.flame, calorieSpots),
                               _buildGridCard("PROTEIN", currentProtein, "TARGET: 150g", Icons.fitness_center, VitalPalette.violet, proteinSpots),
-                              _buildGridCard("FASTING", currentFasting, "16:8 PROTOCOL", Icons.timer, VitalPalette.teal, fastingSpots),
+                              _buildGridCard("FASTING", currentFasting, fastingSubtitle, Icons.timer, VitalPalette.teal, fastingSpots, onTap: () => _showFastingDialog(context)),
                               _buildGridCard("STEPS", currentSteps, _stepsSubtitle(latest?.steps), Icons.directions_run, VitalPalette.sky, stepSpots),
                               _buildGridCard("BLOOD PRESSURE", currentBP, "TARGET: <120/80", Icons.favorite_border, VitalPalette.violet, bpSpots),
                             ],
