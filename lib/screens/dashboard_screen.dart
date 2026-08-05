@@ -777,9 +777,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('One row per day. Columns: date,weight,waist,calories,protein,fasting,steps,systolic,diastolic', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                const Text('One row per day. Optionally start with a header row naming only the columns you want (date is required):', style: TextStyle(color: Colors.white70, fontSize: 11)),
                 const SizedBox(height: 4),
-                const Text('e.g. 2026-08-01,76.4,88,1840,128,14.5,8200,118,76', style: TextStyle(color: Colors.white38, fontSize: 10, fontStyle: FontStyle.italic)),
+                const Text('date, weight, waist, calories, protein, fasting, steps, systolic, diastolic', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                const SizedBox(height: 8),
+                const Text('e.g. steps only:', style: TextStyle(color: Colors.white38, fontSize: 10, fontStyle: FontStyle.italic)),
+                const Text('date,steps\n2026-08-01,8200\n2026-08-02,9100', style: TextStyle(color: Colors.white38, fontSize: 10, fontStyle: FontStyle.italic)),
+                const SizedBox(height: 8),
+                const Text('e.g. full row, no header needed:', style: TextStyle(color: Colors.white38, fontSize: 10, fontStyle: FontStyle.italic)),
+                const Text('2026-08-01,76.4,88,1840,128,14.5,8200,118,76', style: TextStyle(color: Colors.white38, fontSize: 10, fontStyle: FontStyle.italic)),
                 const SizedBox(height: 12),
                 TextField(
                   controller: csvController,
@@ -1151,26 +1157,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 decoration: BoxDecoration(color: accentColor.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(8)),
                 child: Icon(icon, color: accentColor, size: 15),
               ),
-              Text(title, style: const TextStyle(fontSize: 9, color: VitalPalette.textMuted, fontWeight: FontWeight.w800, letterSpacing: 1.0)),
+              Text(title, style: const TextStyle(fontSize: 11, color: VitalPalette.textMuted, fontWeight: FontWeight.w800, letterSpacing: 1.0)),
             ],
           ),
           const SizedBox(height: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  fontFamily: VitalPalette.numeralFont,
-                  fontSize: 19,
-                  fontWeight: FontWeight.w600,
-                  color: VitalPalette.textPrimary,
-                  letterSpacing: -0.2,
+          SizedBox(
+            width: double.infinity,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  value,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontFamily: VitalPalette.numeralFont,
+                    fontSize: 23,
+                    fontWeight: FontWeight.w700,
+                    color: VitalPalette.textPrimary,
+                    letterSpacing: -0.2,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(subtitle, style: const TextStyle(fontSize: 9.5, color: VitalPalette.textMuted, fontWeight: FontWeight.w500)),
-            ],
+                const SizedBox(height: 2),
+                Text(subtitle, textAlign: TextAlign.center, style: const TextStyle(fontSize: 9.5, color: VitalPalette.textMuted, fontWeight: FontWeight.w500)),
+              ],
+            ),
           ),
           const SizedBox(height: 8),
           SizedBox(
@@ -1243,7 +1253,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           lastDate: DateTime.now(),
                         );
                         if (picked != null) {
-                          setModalState(() { selectedDate = picked; });
+                          final pickedKey = picked.toIso8601String().split('T')[0];
+                          final pickedEntry = repo.entryForDate(pickedKey);
+                          final pickedDisplayWeight = pickedEntry?.weight != null ? kgToDisplay(pickedEntry!.weight!, unit) : null;
+                          setModalState(() {
+                            selectedDate = picked;
+                            weightController.text = pickedDisplayWeight?.toStringAsFixed(1) ?? '';
+                            waistController.text = pickedEntry?.waist?.toString() ?? '';
+                            caloriesController.text = pickedEntry?.calories?.toString() ?? '';
+                            proteinController.text = pickedEntry?.protein?.toString() ?? '';
+                            fastingController.text = pickedEntry?.fasting?.toString() ?? '';
+                            stepsController.text = pickedEntry?.steps?.toString() ?? '';
+                            systolicController.text = pickedEntry?.systolic?.toString() ?? '';
+                            diastolicController.text = pickedEntry?.diastolic?.toString() ?? '';
+                          });
                         }
                       },
                       child: Container(

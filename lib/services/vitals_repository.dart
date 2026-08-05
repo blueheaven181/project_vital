@@ -100,18 +100,54 @@ class VitalsRepository {
     return const [FlSpot(0, 0), FlSpot(1, 0)];
   }
 
+  // Column names accepted in an optional header row, mapped to the field
+  // key stored in history_box. Lets a user import just the metric(s) they
+  // care about (e.g. "date,steps") instead of the full fixed column set.
+  static const _csvColumnAliases = {
+    'date': 'date',
+    'weight': 'weight',
+    'waist': 'waist',
+    'waistline': 'waist',
+    'calories': 'calories',
+    'cal': 'calories',
+    'protein': 'protein',
+    'fasting': 'fasting',
+    'fast': 'fasting',
+    'steps': 'steps',
+    'systolic': 'systolic',
+    'sys': 'systolic',
+    'diastolic': 'diastolic',
+    'dia': 'diastolic',
+  };
+
+  static const _doubleFields = {'weight', 'waist', 'fasting'};
+
   ({int imported, int skipped}) importCsv(String raw) {
+    final lines = raw.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+    if (lines.isEmpty) return (imported: 0, skipped: 0);
+
+    // No header row means the classic fixed column order; a header row
+    // lets columns appear in any order/subset via _csvColumnAliases.
+    List<String> columnKeys = ['date', 'weight', 'waist', 'calories', 'protein', 'fasting', 'steps', 'systolic', 'diastolic'];
+    int startIndex = 0;
+    final firstCols = lines.first.split(',').map((c) => c.trim().toLowerCase()).toList();
+    if (firstCols.isEmpty || !_dateKeyRegex.hasMatch(firstCols.first)) {
+      columnKeys = firstCols.map((c) => _csvColumnAliases[c] ?? '').toList();
+      startIndex = 1;
+    }
+
+    final dateColIndex = columnKeys.indexOf('date');
+
     int imported = 0;
     int skipped = 0;
 
-    for (final rawLine in raw.split('\n')) {
-      final line = rawLine.trim();
-      if (line.isEmpty) continue;
-
-      final cols = line.split(',').map((c) => c.trim()).toList();
-      final dateKey = cols.isNotEmpty ? cols[0] : '';
-      if (!_dateKeyRegex.hasMatch(dateKey)) continue; // header row or junk line
-
+    for (var i = startIndex; i < lines.length; i++) {
+      final cols = lines[i].split(',').map((c) => c.trim()).toList();
+      final dateKey = (dateColIndex >= 0 && dateColIndex < cols.length) ? cols[dateColIndex] : '';
+      if (!_dateKeyRegex.hasMatch(dateKey)) {
+        skipped++;
+        continue;
+      }
       try {
         DateTime.parse(dateKey);
       } catch (_) {
@@ -120,37 +156,16 @@ class VitalsRepository {
       }
 
       final updates = <String, dynamic>{};
-      if (cols.length > 1 && cols[1].isNotEmpty) {
-        final v = double.tryParse(cols[1]);
-        if (v != null) updates['weight'] = v;
-      }
-      if (cols.length > 2 && cols[2].isNotEmpty) {
-        final v = double.tryParse(cols[2]);
-        if (v != null) updates['waist'] = v;
-      }
-      if (cols.length > 3 && cols[3].isNotEmpty) {
-        final v = int.tryParse(cols[3]);
-        if (v != null) updates['calories'] = v;
-      }
-      if (cols.length > 4 && cols[4].isNotEmpty) {
-        final v = int.tryParse(cols[4]);
-        if (v != null) updates['protein'] = v;
-      }
-      if (cols.length > 5 && cols[5].isNotEmpty) {
-        final v = double.tryParse(cols[5]);
-        if (v != null) updates['fasting'] = v;
-      }
-      if (cols.length > 6 && cols[6].isNotEmpty) {
-        final v = int.tryParse(cols[6]);
-        if (v != null) updates['steps'] = v;
-      }
-      if (cols.length > 7 && cols[7].isNotEmpty) {
-        final v = int.tryParse(cols[7]);
-        if (v != null) updates['systolic'] = v;
-      }
-      if (cols.length > 8 && cols[8].isNotEmpty) {
-        final v = int.tryParse(cols[8]);
-        if (v != null) updates['diastolic'] = v;
+      for (var c = 0; c < cols.length && c < columnKeys.length; c++) {
+        final key = columnKeys[c];
+        if (key.isEmpty || key == 'date' || cols[c].isEmpty) continue;
+        if (_doubleFields.contains(key)) {
+          final v = double.tryParse(cols[c]);
+          if (v != null) updates[key] = v;
+        } else {
+          final v = int.tryParse(cols[c]);
+          if (v != null) updates[key] = v;
+        }
       }
 
       if (updates.isEmpty) {
